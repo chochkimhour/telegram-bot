@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.git/
+.github/
+node_modules/
+.vercel/
+.next/
+dist/
+build/
+*.log
+

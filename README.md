@@ -40,27 +40,34 @@ A multi-purpose Telegram bot built with Python that seamlessly integrates **Dail
    ```bash
    python main.py
    ```
-   *(Note: This uses `run_polling()` for local development. On Vercel we use a webhook endpoint instead of polling.)*
-
-## Running on Vercel (24/7)
-
-Vercel serverless functions don't keep long-running polling processes alive. To run your Telegram bot "24/7" on Vercel, configure Telegram to send updates to the webhook endpoint:
-
-- Deploy to Vercel.
-- In Vercel environment variables, set `TOKEN` and `GROQ_API_KEY`.
-- Set your Telegram webhook to:
-  `https://<your-vercel-domain>/api/telegram`
-
-One way to set it (replace the placeholders):
-
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-vercel-domain>/api/telegram"
-```
+   *(Note: this uses `run_polling()`; Docker deployment also runs the same long-lived process.)*
 
 ## Groq model
 
 By default the bot uses Groq’s recommended general-purpose model: `llama-3.3-70b-versatile`.
 You can override it with `GROQ_MODEL` (and optionally `GROQ_MAX_TOKENS`, `GROQ_TEMPERATURE`).
+
+## Deploy on Your Own Server (Docker, 24/7)
+
+1. Install Docker on your server.
+2. Make sure `TOKEN` and `GROQ_API_KEY` are set in `.env`.
+3. Build and start:
+
+```bash
+docker compose up -d --build
+```
+
+To restart:
+
+```bash
+docker compose restart
+```
+
+Logs:
+
+```bash
+docker compose logs -f my-boy-bot
+```
 
 ## 💬 Usage
 
