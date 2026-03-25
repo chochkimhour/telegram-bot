@@ -59,4 +59,6 @@ def run():
         asyncio.get_event_loop()
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
-    app.run_polling(drop_pending_updates=True)
+    # Don't drop pending updates on startup so Telegram messages aren't lost
+    # during container restarts.
+    app.run_polling(drop_pending_updates=False)
