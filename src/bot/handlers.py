@@ -90,9 +90,8 @@ async def ask_groq(user: dict, prompt: str) -> str:
 def get_main_keyboard():
     keyboard = [
         [KeyboardButton("🚀 Start"), KeyboardButton("👤 Profile")],
-        [KeyboardButton("⚙️ Setup")],
-        [KeyboardButton("📊 Show"), KeyboardButton("🧹 Clear")],
-        [KeyboardButton("🔄 Reset")]
+        [KeyboardButton("⚙️ Setup"), KeyboardButton("📊 Show")],
+        [KeyboardButton("🧹 Clear"), KeyboardButton("🔄 Reset")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -104,6 +103,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = storage.find_user(chat_id)
     if not user:
         storage.create_user(chat_id, username)
+    else:
+        # Clear any trapped setup state
+        if user.get("step") in ["ASK_NAME", "ASK_PROJECT"]:
+            storage.update_user(chat_id, "step", "NONE")
 
     await update.message.reply_text(
         f"Welcome! I am {BOT_NAME} (AI Chatbot + Daily Reporter). "
@@ -187,8 +190,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await ask_groq(user, text)
         return await update.message.reply_text(reply)
 
+    # If the user hasn't configured a profile, they probably didn't intend to log a task.
+    # Treat this message as a regular chat message instead of throwing an error.
     if not user.get("name") or not user.get("project"):
-        return await update.message.reply_text("You haven't set up your profile for tracking tasks yet. Please use /setup first.")
+        await update.message.chat.send_action(action="typing")
+        reply = await ask_groq(user, text)
+        return await update.message.reply_text(reply)
 
     status_text = "Completed" if percent == 100 else "In Progress"
 
