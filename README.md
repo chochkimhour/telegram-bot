@@ -73,6 +73,7 @@ docker compose logs -f my-boy-bot
 
 ### Basic Commands
 - `/start` - Start the bot and initialize your profile (Name and Project).
+- `/setup` - Configure your profile for daily reporting (prompts for your name, then project).
 - `/show` - View your generated daily progress report for today.
 - `/profile` - Check your currently configured Name and Project.
 - `/clear` - Wipe out all tasks logged for today.
