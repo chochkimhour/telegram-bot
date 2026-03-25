@@ -28,13 +28,13 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyHandler)
     server.serve_forever()
 
-def run():
+def build_application() -> Application:
     if not TOKEN:
-        logger.error("No TOKEN provided!")
-        return
+        raise RuntimeError("TOKEN environment variable is required")
 
     app = Application.builder().token(TOKEN).build()
 
+    # Telegram handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setup", setup))
     app.add_handler(CommandHandler("show", show))
@@ -42,6 +42,14 @@ def run():
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    return app
+
+def run():
+    if not TOKEN:
+        logger.error("No TOKEN provided!")
+        return
+
+    app = build_application()
 
     logger.info("Starting dummy HTTP server for Render health checks...")
     threading.Thread(target=run_dummy_server, daemon=True).start()

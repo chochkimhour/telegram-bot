@@ -9,11 +9,32 @@ from src.bot import storage
 
 logger = logging.getLogger(__name__)
 
+BOT_NAME = "My Boy"
+DEVELOPER_NAME = "Choch Kimhour"
+
 def _log_request(update: Update, action: str):
     user = update.effective_user
     logger.info(
         f"chat_id={update.effective_chat.id} user={user.username or user.first_name} "
         f"action={action} text=\"{update.message.text}\""
+    )
+
+def _is_name_question(text: str) -> bool:
+    t = text.lower()
+    return bool(
+        re.search(
+            r"\b(what(?:'s| is) your name|your name|bot name|name of (this )?(bot|assistant)|who are you|what are you|introduce yourself)\b",
+            t,
+        )
+    )
+
+def _is_developer_question(text: str) -> bool:
+    t = text.lower()
+    return bool(
+        re.search(
+            r"\b(develop\w*|made|built|created)\b.*\b(by)\b|\bwho (made|built|created)\b|\bdeveloper\b",
+            t,
+        )
     )
 
 async def ask_groq(user: dict, prompt: str) -> str:
@@ -38,10 +59,16 @@ async def ask_groq(user: dict, prompt: str) -> str:
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
+    # Use Groq's best general-purpose model by default, but allow override.
+    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "2048"))
+    temperature = float(os.getenv("GROQ_TEMPERATURE", "0.2"))
+
     data = {
-        "model": "llama-3.3-70b-versatile",
+        "model": model,
         "messages": messages,
-        "max_tokens": 2048
+        "max_tokens": max_tokens,
+        "temperature": temperature,
     }
     
     try:
@@ -69,7 +96,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         storage.create_user(chat_id, username)
 
-    await update.message.reply_text("Welcome! I am your AI Chatbot and Daily Reporter. Use /setup if you want to configure daily reporting, or just start chatting!")
+    await update.message.reply_text(
+        f"Welcome! I am {BOT_NAME} (AI Chatbot + Daily Reporter). "
+        f"Use /setup to configure daily reporting, or just start chatting!"
+    )
 
 async def setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log_request(update, "COMMAND /setup")
@@ -105,6 +135,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         storage.update_user(chat_id, "project", text)
         storage.update_user(chat_id, "step", "READY")
         return await update.message.reply_text("Setup complete! You can now log tasks or chat with me.")
+
+    # Identity responses: keep these exact and don't forward to Groq.
+    if _is_name_question(text) or _is_developer_question(text):
+        if _is_name_question(text) and _is_developer_question(text):
+            return await update.message.reply_text(
+                f"I'm {BOT_NAME}. Developed by {DEVELOPER_NAME}."
+            )
+        if _is_name_question(text):
+            return await update.message.reply_text(f"My name is {BOT_NAME}.")
+        return await update.message.reply_text(f"Developed by {DEVELOPER_NAME}.")
 
     # Process report OR Chat
     match = re.search(r"(\d+)%?$", text)
