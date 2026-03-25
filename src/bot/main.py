@@ -8,7 +8,7 @@ import asyncio
 from src.bot.handlers import start, handle_message, show, reset, profile, clear, setup
 
 load_dotenv()
-TOKEN = os.getenv("TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(
     format='[%(levelname)s] %(asctime)s - %(message)s',
@@ -29,10 +29,11 @@ def run_dummy_server():
     server.serve_forever()
 
 def build_application() -> Application:
-    if not TOKEN:
-        raise RuntimeError("TOKEN environment variable is required")
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN environment variable is required")
 
-    app = Application.builder().token(TOKEN).build()
+    # Increase connection timeouts to prevent httpx.ConnectTimeout
+    app = Application.builder().token(BOT_TOKEN).connect_timeout(30.0).read_timeout(30.0).build()
 
     # Telegram handlers
     app.add_handler(CommandHandler("start", start))
@@ -45,8 +46,8 @@ def build_application() -> Application:
     return app
 
 def run():
-    if not TOKEN:
-        logger.error("No TOKEN provided!")
+    if not BOT_TOKEN:
+        logger.error("No BOT_TOKEN provided!")
         return
 
     app = build_application()

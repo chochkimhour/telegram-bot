@@ -3,13 +3,13 @@ import re
 import os
 import httpx
 from datetime import datetime
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from src.bot import storage
 
 logger = logging.getLogger(__name__)
 
-BOT_NAME = "My Boy"
+BOT_NAME = "My Boy 🤖"
 DEVELOPER_NAME = "Choch Kimhour"
 
 def _log_request(update: Update, action: str):
@@ -87,6 +87,15 @@ async def ask_groq(user: dict, prompt: str) -> str:
         logger.error(f"Groq API error: {e}")
         return "Sorry, I couldn't reach the AI at the moment."
 
+def get_main_keyboard():
+    keyboard = [
+        [KeyboardButton("🚀 Start"), KeyboardButton("👤 Profile")],
+        [KeyboardButton("⚙️ Setup")],
+        [KeyboardButton("📊 Show"), KeyboardButton("🧹 Clear")],
+        [KeyboardButton("🔄 Reset")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log_request(update, "COMMAND /start")
     chat_id = str(update.effective_chat.id)
@@ -98,7 +107,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"Welcome! I am {BOT_NAME} (AI Chatbot + Daily Reporter). "
-        f"Use /setup to configure daily reporting, or just start chatting!"
+        f"Please choose an option from the menu below:",
+        reply_markup=get_main_keyboard()
     )
 
 async def setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,6 +133,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not user:
         user = storage.create_user(chat_id, update.effective_user.username or update.effective_user.first_name)
+
+    # Process menu buttons
+    if text == "🚀 Start":
+        return await start(update, context)
+    elif text == "⚙️ Setup":
+        return await setup(update, context)
+    elif text == "👤 Profile":
+        return await profile(update, context)
+    elif text == "📊 Show":
+        return await show(update, context)
+    elif text == "🧹 Clear":
+        return await clear(update, context)
+    elif text == "🔄 Reset":
+        return await reset(update, context)
 
     step = user.get("step")
 
