@@ -5,7 +5,13 @@ from typing import Optional, List, Dict, Any
 
 # Using Pathlib for better path management
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+# Vercel's file system is read-only except for /tmp
+if os.environ.get("VERCEL"):
+    DATA_DIR = Path("/tmp/data")
+else:
+    DATA_DIR = BASE_DIR / "data"
+
 USERS_FILE = DATA_DIR / "users" / "user.json"
 REPORTS_DIR = DATA_DIR / "reports"
 
