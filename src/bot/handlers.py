@@ -60,7 +60,7 @@ async def ask_gemini(user: dict, prompt: str) -> str:
     messages.append({"role": "user", "content": prompt})
 
     # Use Gemini model by default
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     max_tokens = int(os.getenv("GEMINI_MAX_TOKENS", "2048"))
     temperature = float(os.getenv("GEMINI_TEMPERATURE", "0.2"))
 
