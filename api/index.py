@@ -5,7 +5,7 @@ from telegram import Update
 from src.bot.main import build_application
 import os
 
-app = None
+bot_instance = None
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -14,19 +14,19 @@ class handler(BaseHTTPRequestHandler):
             post_body = self.rfile.read(content_len)
             update_data = json.loads(post_body)
             
-            global app
-            if app is None:
-                app = build_application()
+            global bot_instance
+            if bot_instance is None:
+                bot_instance = build_application()
                 
             # Create a new event loop for this webhook request
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            if not app._initialized:
-                loop.run_until_complete(app.initialize())
+            if not bot_instance._initialized:
+                loop.run_until_complete(bot_instance.initialize())
                 
-            update = Update.de_json(update_data, app.bot)
-            loop.run_until_complete(app.process_update(update))
+            update = Update.de_json(update_data, bot_instance.bot)
+            loop.run_until_complete(bot_instance.process_update(update))
             loop.close()
             
             self.send_response(200)
