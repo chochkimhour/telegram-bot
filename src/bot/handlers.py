@@ -9,8 +9,8 @@ from src.bot import storage
 
 logger = logging.getLogger(__name__)
 
-BOT_NAME = "My Boy 🤖"
-DEVELOPER_NAME = "Choch Kimhour"
+BOT_NAME = os.getenv("BOT_NAME")
+DEVELOPER_NAME = os.getenv("DEVELOPER_NAME")
 
 def _log_request(update: Update, action: str):
     user = update.effective_user

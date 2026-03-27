@@ -1,11 +1,12 @@
+name: "telegram-bot"
 services:
   my-boy-bot:
     build: .
-    container_name: my-boy-bot
+    image: "my-boy-bot"
+    container_name: "my-boy-bot"
     restart: unless-stopped
     env_file:
       - .env
     # If your server has a firewall, consider exposing the dummy health port.
     ports:
       - "10000:10000"
-
