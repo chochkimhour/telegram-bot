@@ -37,14 +37,16 @@ def _is_developer_question(text: str) -> bool:
         )
     )
 
-async def ask_gemini(user: dict, prompt: str) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
+async def ask_openrouter(user: dict, prompt: str) -> str:
+    api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        return "Internal Error: GEMINI_API_KEY is not configured."
-    url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        return "Internal Error: OPENROUTER_API_KEY is not configured."
+    url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/kimhourchoch-zin/Telegram-Bot",
+        "X-Title": "My Boy Telegram Bot"
     }
 
     system_content = "You are a friendly and helpful AI assistant."
@@ -59,10 +61,10 @@ async def ask_gemini(user: dict, prompt: str) -> str:
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
-    # Use Gemini model by default
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    max_tokens = int(os.getenv("GEMINI_MAX_TOKENS", "2048"))
-    temperature = float(os.getenv("GEMINI_TEMPERATURE", "0.2"))
+    # Use OpenAI GPT-3.5 Turbo by default via OpenRouter
+    model = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
+    max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "2048"))
+    temperature = float(os.getenv("OPENROUTER_TEMPERATURE", "0.2"))
 
     data = {
         "model": model,
@@ -84,7 +86,7 @@ async def ask_gemini(user: dict, prompt: str) -> str:
 
             return reply
     except Exception as e:
-        logger.error(f"Gemini API error: {e}")
+        logger.error(f"OpenRouter API error: {e}")
         return "Sorry, I couldn't reach the AI at the moment."
 
 def get_main_keyboard():
@@ -178,7 +180,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not match:
         await update.message.chat.send_action(action="typing")
-        reply = await ask_gemini(user, text)
+        reply = await ask_openrouter(user, text)
         return await update.message.reply_text(reply)
 
     percent = int(match.group(1))
@@ -187,14 +189,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not task:
         # If it's just a number without task text, also treat as chat
         await update.message.chat.send_action(action="typing")
-        reply = await ask_gemini(user, text)
+        reply = await ask_openrouter(user, text)
         return await update.message.reply_text(reply)
 
     # If the user hasn't configured a profile, they probably didn't intend to log a task.
     # Treat this message as a regular chat message instead of throwing an error.
     if not user.get("name") or not user.get("project"):
         await update.message.chat.send_action(action="typing")
-        reply = await ask_gemini(user, text)
+        reply = await ask_openrouter(user, text)
         return await update.message.reply_text(reply)
 
     status_text = "Completed" if percent == 100 else "In Progress"
