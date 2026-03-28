@@ -36,8 +36,9 @@ def build_application() -> Application:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required")
 
-    # Increase connection timeouts to prevent httpx.ConnectTimeout
-    app = Application.builder().token(BOT_TOKEN).connect_timeout(30.0).read_timeout(30.0).build()
+    # Use the builder without hardcoding read_timeout so the 
+    # built-in long polling can use the default 50s getUpdates timeout
+    app = Application.builder().token(BOT_TOKEN).build()
 
     # Telegram handlers
     app.add_handler(CommandHandler("start", start))
