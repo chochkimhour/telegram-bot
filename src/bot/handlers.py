@@ -37,7 +37,7 @@ def _is_developer_question(text: str) -> bool:
         )
     )
 
-FALLBACK_MODELS = os.getenv("OPENROUTER_MODEL")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL")
 
 async def ask_openrouter(user: dict, prompt: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -65,41 +65,29 @@ async def ask_openrouter(user: dict, prompt: str) -> str:
     max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "2048"))
     temperature = float(os.getenv("OPENROUTER_TEMPERATURE", "0.2"))
 
-    # Deduplicate while preserving order (env override may duplicate first entry)
-    seen = set()
-    models = []
-    for m in FALLBACK_MODELS:
-        if m not in seen:
-            seen.add(m)
-            models.append(m)
+    data = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
 
-    last_error = None
-    async with httpx.AsyncClient() as client:
-        for model in models:
-            data = {
-                "model": model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            try:
-                logger.info(f"Trying model: {model}")
-                response = await client.post(url, headers=headers, json=data, timeout=30.0)
-                response.raise_for_status()
-                result = response.json()
-                reply = result["choices"][0]["message"]["content"]
+    try:
+        logger.info(f"Trying model: {data['model']}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=data, timeout=30.0)
+            response.raise_for_status()
+            result = response.json()
+            reply = result["choices"][0]["message"]["content"]
 
-                history.append({"role": "user", "content": prompt})
-                history.append({"role": "assistant", "content": reply})
-                storage.update_user(user["chat_id"], "chat_history", history[-20:])
+            history.append({"role": "user", "content": prompt})
+            history.append({"role": "assistant", "content": reply})
+            storage.update_user(user["chat_id"], "chat_history", history[-20:])
 
-                return reply
-            except Exception as e:
-                logger.warning(f"Model {model} failed: {e}")
-                last_error = e
-
-    logger.error(f"All models failed. Last error: {last_error}")
-    return "Sorry, I couldn't reach the AI at the moment. Please try again later."
+            return reply
+    except Exception as e:
+        logger.error(f"OpenRouter API error: {e}")
+        return "Sorry, I couldn't reach the AI at the moment. Please try again later."
 
 def get_main_keyboard():
     keyboard = [
