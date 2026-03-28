@@ -37,9 +37,7 @@ def _is_developer_question(text: str) -> bool:
         )
     )
 
-FALLBACK_MODELS = [
-    os.getenv("OPENROUTER_MODEL")
-]
+FALLBACK_MODELS = os.getenv("OPENROUTER_MODEL")
 
 async def ask_openrouter(user: dict, prompt: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
