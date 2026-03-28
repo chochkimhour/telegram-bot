@@ -37,6 +37,10 @@ def _is_developer_question(text: str) -> bool:
         )
     )
 
+FALLBACK_MODELS = [
+    os.getenv("OPENROUTER_MODEL")
+]
+
 async def ask_openrouter(user: dict, prompt: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -56,38 +60,48 @@ async def ask_openrouter(user: dict, prompt: str) -> str:
         system_content += f" The user is working on a project named {user.get('project')}."
 
     messages = [{"role": "system", "content": system_content}]
-    
     history = user.get("chat_history", [])
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
-    # Use OpenAI GPT-3.5 Turbo by default via OpenRouter
-    model = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
     max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "2048"))
     temperature = float(os.getenv("OPENROUTER_TEMPERATURE", "0.2"))
 
-    data = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=data, timeout=30.0)
-            response.raise_for_status()
-            result = response.json()
-            reply = result["choices"][0]["message"]["content"]
+    # Deduplicate while preserving order (env override may duplicate first entry)
+    seen = set()
+    models = []
+    for m in FALLBACK_MODELS:
+        if m not in seen:
+            seen.add(m)
+            models.append(m)
 
-            history.append({"role": "user", "content": prompt})
-            history.append({"role": "assistant", "content": reply})
-            storage.update_user(user["chat_id"], "chat_history", history[-20:])
+    last_error = None
+    async with httpx.AsyncClient() as client:
+        for model in models:
+            data = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            try:
+                logger.info(f"Trying model: {model}")
+                response = await client.post(url, headers=headers, json=data, timeout=30.0)
+                response.raise_for_status()
+                result = response.json()
+                reply = result["choices"][0]["message"]["content"]
 
-            return reply
-    except Exception as e:
-        logger.error(f"OpenRouter API error: {e}")
-        return "Sorry, I couldn't reach the AI at the moment."
+                history.append({"role": "user", "content": prompt})
+                history.append({"role": "assistant", "content": reply})
+                storage.update_user(user["chat_id"], "chat_history", history[-20:])
+
+                return reply
+            except Exception as e:
+                logger.warning(f"Model {model} failed: {e}")
+                last_error = e
+
+    logger.error(f"All models failed. Last error: {last_error}")
+    return "Sorry, I couldn't reach the AI at the moment. Please try again later."
 
 def get_main_keyboard():
     keyboard = [
