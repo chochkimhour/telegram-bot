@@ -3,7 +3,7 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import asyncio
 from src.bot.handlers import start, handle_message, show, reset, profile, clear, setup
 
@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 # Suppress HTTP libraries tracking every single request (like long polling)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and handle Telegram TimedOut gracefully."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
+    # If this is specifically a timeout error, we don't need a huge panic in prod.
+    # It's an internal HTTP issue, and the bot's polling will auto-recover.
+    try:
+        from telegram.error import TimedOut, NetworkError
+        if isinstance(context.error, (TimedOut, NetworkError)):
+            logger.warning("Network timeout occurred. Reconnecting to Telegram...")
+    except ImportError:
+        pass
 
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -36,9 +48,9 @@ def build_application() -> Application:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required")
 
-    # Use the builder without hardcoding read_timeout so the 
-    # built-in long polling can use the default 50s getUpdates timeout
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Increase connection timeouts to prevent httpx.ConnectTimeout due to
+    # slow network or IPv6 fallback delays on Ubuntu servers.
+    app = Application.builder().token(BOT_TOKEN).connect_timeout(30.0).read_timeout(30.0).build()
 
     # Telegram handlers
     app.add_handler(CommandHandler("start", start))
@@ -48,6 +60,9 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Register a global error handler to gracefully handle timeouts on production
+    app.add_error_handler(error_handler)
     return app
 
 def run():
