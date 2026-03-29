@@ -1,14 +1,35 @@
 name: "telegram-bot"
 services:
+  db:
+    image: mysql:8.0
+    container_name: "my-boy-db"
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_pass}
+      MYSQL_DATABASE: ${DB_NAME:-bot_db}
+      MYSQL_USER: ${DB_USER:-bot_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-bot_pass}
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
   my-boy-bot:
     build: .
     image: "my-boy-bot"
     container_name: "my-boy-bot"
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     env_file:
       - .env
-    volumes:
-      - ./data:/app/data
-    # If your server has a firewall, consider exposing the dummy health port.
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
     ports:
       - "10000:10000"

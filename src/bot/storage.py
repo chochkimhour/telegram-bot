@@ -1,112 +1,207 @@
-import json
+import mysql.connector
 import os
+import json
+import logging
+import time
+from datetime import datetime
 from pathlib import Path
+from cryptography.fernet import Fernet
 from typing import Optional, List, Dict, Any
 
-# Using Pathlib for better path management
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
-USERS_FILE = DATA_DIR / "users" / "user.json"
-REPORTS_DIR = DATA_DIR / "reports"
+logger = logging.getLogger(__name__)
 
-def _ensure_dir(path: Path):
-    path.mkdir(parents=True, exist_ok=True)
+# Database Configuration
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
+    "raise_on_warnings": False
+}
 
-def load_users() -> List[Dict[str, Any]]:
-    _ensure_dir(USERS_FILE.parent)
-    if not USERS_FILE.exists():
-        with open(USERS_FILE, "w") as f:
-            json.dump([], f)
-        return []
+# Encryption settings
+ENCRYPTED_FIELDS = ["chat_history", "name", "project"]
+
+def _get_encryption_key() -> bytes:
+    key = os.getenv("ENCRYPTION_KEY")
+    if not key:
+        logger.warning("CRITICAL: No ENCRYPTION_KEY found in environment! Using a temporary key. Please add ENCRYPTION_KEY to your .env to avoid data loss.")
+        # We'll use a hardcoded fallback for development, but warn the user
+        return b"g-M4N8lV-Y6S86s-xG-pP2-r69X-w8_L4n8q9q9q9q9="
+    return key.encode()
+
+_cipher = Fernet(_get_encryption_key())
+
+def encrypt(data: Optional[str]) -> Optional[bytes]:
+    if data is None: return None
+    return _cipher.encrypt(data.encode())
+
+def decrypt(data: Optional[bytes]) -> Optional[str]:
+    if data is None: return None
+    if isinstance(data, str): data = data.encode() # Handle potential string from DB driver
+    try:
+        return _cipher.decrypt(data).decode()
+    except Exception as e:
+        logger.error(f"Decryption failed: {e}")
+        return None
+
+def get_db_connection():
+    attempts = 0
+    while attempts < 5:
+        try:
+            conn = mysql.connector.connect(**DB_CONFIG)
+            return conn
+        except mysql.connector.Error as err:
+            logger.warning(f"Connection attempt {attempts+1} failed: {err}")
+            attempts += 1
+            time.sleep(2)
+    raise Exception("Could not connect to MySQL database after 5 attempts")
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+    # Users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            chat_id VARCHAR(50) PRIMARY KEY,
+            username VARCHAR(100),
+            name LONGBLOB,
+            project LONGBLOB,
+            step VARCHAR(50) DEFAULT 'NONE',
+            chat_history LONGBLOB,
+            created_at DATETIME
+        )
+    """)
+    
+    # Reports table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chat_id VARCHAR(50),
+            task LONGBLOB,
+            percent INT,
+            status VARCHAR(50),
+            date VARCHAR(20),
+            time VARCHAR(20),
+            FOREIGN KEY (chat_id) REFERENCES users (chat_id)
+        )
+    """)
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-def save_users(data: List[Dict[str, Any]]):
-    _ensure_dir(USERS_FILE.parent)
-    with open(USERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+# Initialize database on import
+init_db()
 
 def find_user(chat_id: str) -> Optional[Dict[str, Any]]:
-    data = load_users()
-    return next((u for u in data if u["chat_id"] == chat_id), None)
-
-def update_user(chat_id: str, key: str, value: Any):
-    data = load_users()
-    for user in data:
-        if user["chat_id"] == chat_id:
-            user[key] = value
-            break
-    save_users(data)
-
-def create_user(chat_id: str, username: str) -> Dict[str, Any]:
-    data = load_users()
-    new_user = {
-        "id": len(data) + 1,
-        "chat_id": chat_id,
-        "username": username,
-        "name": None,
-        "project": None,
-        "step": "NONE",
-        "chat_history": [],
-        "created_at": None # Replace with datetime.now().isoformat()
-    }
-    data.append(new_user)
-    save_users(data)
-    return new_user
-
-def load_today_report(user: Dict[str, Any], date: str) -> Optional[Dict[str, Any]]:
-    _ensure_dir(REPORTS_DIR)
-    filename = f"{user['name'].lower().replace(' ', '-')}-{date}.json"
-    filepath = REPORTS_DIR / filename
-    if filepath.exists():
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except (json.JSONDecodeError, ValueError):
-            pass
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE chat_id = %s", (str(chat_id),))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if user:
+        # Decrypt sensitive fields
+        for field in ENCRYPTED_FIELDS:
+            val = user.get(field)
+            if val is not None:
+                decrypted_val = decrypt(val)
+                if field == "chat_history":
+                    try:
+                        user[field] = json.loads(decrypted_val) if decrypted_val else []
+                    except (json.JSONDecodeError, TypeError):
+                        user[field] = []
+                else:
+                    user[field] = decrypted_val
+            elif field == "chat_history":
+                user[field] = []
+        
+        # Final safety check for chat_history
+        if "chat_history" not in user or user["chat_history"] is None:
+            user["chat_history"] = []
+            
+        return user
     return None
 
-def save_report(user: Dict[str, Any], task: str, percent: int, status: str, date: str, timestamp: str):
-    _ensure_dir(REPORTS_DIR)
-    filename = f"{user['name'].lower().replace(' ', '-')}-{date}.json"
-    filepath = REPORTS_DIR / filename
+def create_user(chat_id: str, username: str) -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute(
+        "INSERT IGNORE INTO users (chat_id, username, created_at, step) VALUES (%s, %s, %s, 'NONE')",
+        (str(chat_id), username, now)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return find_user(chat_id)
+
+def update_user(chat_id: str, key: str, value: Any):
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
-    if filepath.exists():
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, ValueError):
-            data = None
+    if key in ENCRYPTED_FIELDS:
+        store_value = json.dumps(value) if isinstance(value, (list, dict)) else str(value)
+        db_value = encrypt(store_value)
     else:
-        data = None
-
-    if not data or not isinstance(data, dict) or "tasks" not in data:
-        data = None
-
-    if data is None:
-        data = {
-            "date": date,
-            "employee": user.get("name"),
-            "project": user.get("project"),
-            "tasks": []
-        }
+        db_value = value
     
-    data["tasks"].append({
-        "task": task,
-        "percent": percent,
-        "status": status,
-        "time": timestamp
-    })
+    if key in ["username", "name", "project", "step", "chat_history", "created_at"]:
+        query = f"UPDATE users SET {key} = %s WHERE chat_id = %s"
+        cursor.execute(query, (db_value, str(chat_id)))
+        conn.commit()
+    cursor.close()
+    conn.close()
+
+def save_report(user: Dict[str, Any], task: str, percent: int, status: str, date: str, timestamp: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    encrypted_task = encrypt(task)
+    cursor.execute(
+        "INSERT INTO reports (chat_id, task, percent, status, date, time) VALUES (%s, %s, %s, %s, %s, %s)",
+        (str(user["chat_id"]), encrypted_task, percent, status, date, timestamp)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def load_today_report(user: Dict[str, Any], date: str) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM reports WHERE chat_id = %s AND date = %s", 
+        (str(user["chat_id"]), date)
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
     
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=2)
+    if not rows:
+        return None
+    
+    tasks = []
+    for row in rows:
+        tasks.append({
+            "task": decrypt(row["task"]),
+            "percent": row["percent"],
+            "status": row["status"],
+            "time": row["time"]
+        })
+        
+    return {
+        "date": date,
+        "employee": user.get("name"),
+        "project": user.get("project"),
+        "tasks": tasks
+    }
 
 def clear_today_report(user: Dict[str, Any], date: str):
-    _ensure_dir(REPORTS_DIR)
-    filename = f"{user['name'].lower().replace(' ', '-')}-{date}.json"
-    filepath = REPORTS_DIR / filename
-    if filepath.exists():
-        filepath.unlink()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM reports WHERE chat_id = %s AND date = %s", (str(user["chat_id"]), date))
+    conn.commit()
+    cursor.close()
+    conn.close()

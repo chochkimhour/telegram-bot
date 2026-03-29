@@ -9,3 +9,7 @@ node_modules/
 dist/
 build/
 *.log
+mysql_data/
+data/
+venv/
+.venv/

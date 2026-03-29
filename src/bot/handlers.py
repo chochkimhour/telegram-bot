@@ -4,6 +4,7 @@ import os
 import httpx
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from src.bot import storage
 
@@ -14,9 +15,16 @@ DEVELOPER_NAME = os.getenv("DEVELOPER_NAME")
 
 def _log_request(update: Update, action: str):
     user = update.effective_user
+    # Mask message text for privacy as per user request
+    text_preview = "[HIDDEN]"
+    if update.message and update.message.text:
+        # Show first few chars if it's a command, otherwise keep hidden
+        if update.message.text.startswith('/'):
+            text_preview = update.message.text[:20] + "..." if len(update.message.text) > 20 else update.message.text
+    
     logger.info(
         f"chat_id={update.effective_chat.id} user={user.username or user.first_name} "
-        f"action={action} text=\"{update.message.text}\""
+        f"action={action} text=\"{text_preview}\""
     )
 
 def _is_name_question(text: str) -> bool:
@@ -39,6 +47,14 @@ def _is_developer_question(text: str) -> bool:
 
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL")
 
+def format_ai_response(text: str) -> str:
+    """Simple helper to make AI Markdown look better in Telegram's basic Markdown mode."""
+    # Convert headers (### Header) to bold (*Header*)
+    text = re.sub(r"^###\s+(.*)$", r"*\1*", text, flags=re.MULTILINE)
+    text = re.sub(r"^##\s+(.*)$", r"*\1*", text, flags=re.MULTILINE)
+    text = re.sub(r"^#\s+(.*)$", r"*\1*", text, flags=re.MULTILINE)
+    return text
+
 async def ask_openrouter(user: dict, prompt: str) -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -58,7 +74,7 @@ async def ask_openrouter(user: dict, prompt: str) -> str:
         system_content += f" The user is working on a project named {user.get('project')}."
 
     messages = [{"role": "system", "content": system_content}]
-    history = user.get("chat_history", [])
+    history = user.get("chat_history") or []
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
@@ -111,9 +127,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             storage.update_user(chat_id, "step", "NONE")
 
     await update.message.reply_text(
-        f"Welcome! I am {BOT_NAME} (AI Chatbot + Daily Reporter). "
+        f"👋 *Welcome!* I am *{BOT_NAME}* (AI Chatbot + Daily Reporter).\n\n"
         f"Please choose an option from the menu below:",
-        reply_markup=get_main_keyboard()
+        reply_markup=get_main_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
     )
 
 async def setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -169,11 +186,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if _is_name_question(text) or _is_developer_question(text):
         if _is_name_question(text) and _is_developer_question(text):
             return await update.message.reply_text(
-                f"I'm {BOT_NAME}. Developed by {DEVELOPER_NAME}."
+                f"I'm *{BOT_NAME}*. Developed by *{DEVELOPER_NAME}*.",
+                parse_mode=ParseMode.MARKDOWN
             )
         if _is_name_question(text):
-            return await update.message.reply_text(f"My name is {BOT_NAME}.")
-        return await update.message.reply_text(f"Developed by {DEVELOPER_NAME}.")
+            return await update.message.reply_text(f"My name is *{BOT_NAME}*.", parse_mode=ParseMode.MARKDOWN)
+        return await update.message.reply_text(f"Developed by *{DEVELOPER_NAME}*.", parse_mode=ParseMode.MARKDOWN)
 
     # Process report OR Chat
     match = re.search(r"(\d+)%?$", text)
@@ -181,7 +199,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not match:
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
-        return await update.message.reply_text(reply)
+        return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
     percent = int(match.group(1))
     task = re.sub(r"\s*(\d+)%?$", "", text).strip()
@@ -190,14 +208,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # If it's just a number without task text, also treat as chat
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
-        return await update.message.reply_text(reply)
+        return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
     # If the user hasn't configured a profile, they probably didn't intend to log a task.
     # Treat this message as a regular chat message instead of throwing an error.
     if not user.get("name") or not user.get("project"):
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
-        return await update.message.reply_text(reply)
+        return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
     status_text = "Completed" if percent == 100 else "In Progress"
 
@@ -214,34 +232,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     completed = [t for t in tasks if t["status"] == "Completed"]
     in_progress = [t for t in tasks if t["status"] == "In Progress"]
 
-    sep = ""
     lines = []
-    lines.append("DAILY PROGRESS REPORT")
-    lines.append(sep)
-    lines.append(f"Date: {date_display}")
-    lines.append(f"Employee: {user.get('name')}")
-    lines.append(f"Project: {user.get('project')}")
-    lines.append(sep)
-    lines.append("1. Code Inspection")
+    lines.append("*DAILY PROGRESS REPORT*")
+    lines.append(f"\n*Date:* {date_display}")
+    lines.append(f"*Employee:* {user.get('name')}")
+    lines.append(f"*Project:* {user.get('project')}")
+    lines.append("\n*1. Code Inspection*")
     lines.append("Status: N/A")
-    lines.append("2. Progress on Tasks")
+    lines.append("*2. Progress on Tasks*")
     if completed:
-        lines.append("Completed")
+        lines.append("*Completed*")
         for t in completed:
             lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
     if in_progress:
-        lines.append("In Progress")
+        lines.append("*In Progress*")
         for t in in_progress:
             lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
-    lines.append("3. Challenges / Issues")
+    lines.append("*3. Challenges / Issues*")
     lines.append("Status: N/A")
-    lines.append("4. Problem-Solving Approach")
+    lines.append("*4. Problem-Solving Approach*")
     lines.append("Status: N/A")
-    lines.append(sep)
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log_request(update, "COMMAND /show")
@@ -264,34 +278,30 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     completed = [t for t in tasks if t["status"] == "Completed"]
     in_progress = [t for t in tasks if t["status"] == "In Progress"]
     
-    sep = ""
     lines = []
-    lines.append("DAILY PROGRESS REPORT")
-    lines.append(sep)
-    lines.append(f"Date: {date_display}")
-    lines.append(f"Employee: {user.get('name')}")
-    lines.append(f"Project: {user.get('project')}")
-    lines.append(sep)
-    lines.append("1. Code Inspection")
+    lines.append("*DAILY PROGRESS REPORT*")
+    lines.append(f"\n*Date:* {date_display}")
+    lines.append(f"*Employee:* {user.get('name')}")
+    lines.append(f"*Project:* {user.get('project')}")
+    lines.append("\n*1. Code Inspection*")
     lines.append("Status: N/A")
-    lines.append("2. Progress on Tasks")
+    lines.append("*2. Progress on Tasks*")
     if completed:
-        lines.append("Completed")
+        lines.append("*Completed*")
         for t in completed:
             lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
     if in_progress:
-        lines.append("In Progress")
+        lines.append("*In Progress*")
         for t in in_progress:
             lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
-    lines.append("3. Challenges / Issues")
+    lines.append("*3. Challenges / Issues*")
     lines.append("Status: N/A")
-    lines.append("4. Problem-Solving Approach")
+    lines.append("*4. Problem-Solving Approach*")
     lines.append("Status: N/A")
-    lines.append(sep)
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log_request(update, "COMMAND /clear")
@@ -329,4 +339,10 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     name = user.get("name")
     project = user.get("project")
-    await update.message.reply_text(f"Profile Information:\nName: {name}\nProject: {project}")
+    await update.message.reply_text(
+        f"👤 *Profile Information*\n"
+        f"{'─' * 20}\n"
+        f"*Name:* {name}\n"
+        f"*Project:* {project}",
+        parse_mode=ParseMode.MARKDOWN
+    )
