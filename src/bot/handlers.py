@@ -9,6 +9,19 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from src.bot import storage
 
+def get_setup_guide() -> str:
+    return (
+        "💡 *Pro-Tips for New Users*\n"
+        f"{'─' * 20}\n"
+        "1️⃣ *Setup Your Profile*: Use the *Setup* button (or /start) to tell me your name and project.\n"
+        "2️⃣ *Logging Tasks*: To log progress, simply send me a message with a percentage and a `%` sign.\n"
+        "   *Example*: `Fixed bugs 100%` or `Working on UI 50%`.\n"
+        "3️⃣ *Daily Reports*: Use the *Show* button to see your formatted daily report.\n"
+        "4️⃣ *Stay Private*: All your data is encrypted with AES-256 for your privacy.\n"
+        f"{'─' * 20}\n"
+        "Ready? Click *Setup* now to begin! 🚀"
+    )
+
 logger = logging.getLogger(__name__)
 
 BOT_NAME = os.getenv("BOT_NAME")
@@ -223,11 +236,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await ask_openrouter(user, text)
         return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
-    # If the user hasn't configured a profile, they probably didn't intend to log a task.
+    # If the user hasn't configured a profile, show the pro-tip guide.
     if not user.get("name") or not user.get("project"):
-        await update.message.chat.send_action(action="typing")
-        reply = await ask_openrouter(user, text)
-        return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
+        return await update.message.reply_text(
+            f"👋 *Hi {update.effective_chat.first_name}! Notice:*\n\n" + get_setup_guide(),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
     now = datetime.now(pytz.timezone('Asia/Phnom_Penh'))
     date_str = now.strftime("%Y-%m-%d")
@@ -256,11 +270,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if completed:
         lines.append("*Completed*")
         for i, t in enumerate(completed, 1):
-            lines.append(f"{i}. {t['task']} {t['percent']}%")
+            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
     if in_progress:
-        lines.append("\n*In Progress*")
+        lines.append("*In Progress*")
         for i, t in enumerate(in_progress, 1):
-            lines.append(f"{i}. {t['task']} {t['percent']}%")
+            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
@@ -276,7 +290,10 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = storage.find_user(chat_id)
     
     if not user or not user.get("name") or not user.get("project"):
-        return await update.message.reply_text("Please use /start to set your name and project first.")
+        return await update.message.reply_text(
+            f"⚠️ *Profile Incomplete*\n\n" + get_setup_guide(),
+            parse_mode=ParseMode.MARKDOWN
+        )
         
     now = datetime.now(pytz.timezone('Asia/Phnom_Penh'))
     date_str = now.strftime("%Y-%m-%d")
@@ -302,11 +319,11 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if completed:
         lines.append("*Completed*")
         for i, t in enumerate(completed, 1):
-            lines.append(f"{i}. {t['task']} {t['percent']}%")
+            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
     if in_progress:
-        lines.append("\n*In Progress*")
+        lines.append("*In Progress*")
         for i, t in enumerate(in_progress, 1):
-            lines.append(f"{i}. {t['task']} {t['percent']}%")
+            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
@@ -348,7 +365,10 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = storage.find_user(chat_id)
     
     if not user or not user.get("name") or not user.get("project"):
-        return await update.message.reply_text("You haven't set up your profile yet. Please use /start.")
+        return await update.message.reply_text(
+            f"👤 *Profile Not Set*\n\n" + get_setup_guide(),
+            parse_mode=ParseMode.MARKDOWN
+        )
         
     name = user.get("name")
     project = user.get("project")
