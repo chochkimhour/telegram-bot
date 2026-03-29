@@ -11,17 +11,17 @@ from src.bot import storage
 
 def get_setup_guide() -> str:
     return (
-        "🚀 *How to use My Boy Bot:*\n"
+        "*How to use My Boy Bot:*\n"
         f"{'─' * 20}\n"
-        "✍️ *1. Setup Profile*\n"
+        "*1. Setup Profile*\n"
         "Click the *Setup* button (or /start) to set your Name and Project.\n\n"
-        "✅ *2. Log Your Tasks*\n"
+        "*2. Log Your Tasks*\n"
         "To save a task, include a **%** at the end:\n"
-        "👉 `Fix login bug 100%`\n"
-        "👉 `Design Home Page 50%`\n\n"
-        "📁 *3. View Report*\n"
+        "`Fix login bug 100%`\n"
+        "`Design Home Page 50%`\n\n"
+        "*3. View Report*\n"
         "Click the *Show* button to see your formatted Daily Report.\n\n"
-        "🔐 *Privacy*: Your data is 100% encrypted and safe!"
+        "*Privacy*: Your data is 100% encrypted and safe!"
     )
 
 logger = logging.getLogger(__name__)
@@ -241,7 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If the user hasn't configured a profile, show the pro-tip guide.
     if not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
+            f"👤 *YOUR PROFILE IS NOT SET UP*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -293,7 +293,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not user or not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
+            f"👤 *YOUR PROFILE IS NOT SET UP*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -368,7 +368,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not user or not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
+            f"👤 *YOUR PROFILE IS NOT SET UP*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
         
