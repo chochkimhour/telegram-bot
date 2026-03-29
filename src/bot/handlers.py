@@ -12,15 +12,14 @@ from src.bot import storage
 def get_setup_guide() -> str:
     return (
         "*How to use My Boy Bot:*\n"
-        f"{'─' * 20}\n"
         "*1. Setup Profile*\n"
-        "Click the *Setup* button (or /start) to set your Name and Project.\n\n"
+        "Click the *Setup* button to set your Name and Project.\n"
         "*2. Log Your Tasks*\n"
         "To save a task, include a **%** at the end:\n"
         "`Fix login bug 100%`\n"
-        "`Design Home Page 50%`\n\n"
+        "`Design Home Page 50%`\n"
         "*3. View Report*\n"
-        "Click the *Show* button to see your formatted Daily Report.\n\n"
+        "Click the *Show* button to see your formatted Daily Report.\n"
         "*Privacy*: Your data is 100% encrypted and safe!"
     )
 
