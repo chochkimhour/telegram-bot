@@ -66,7 +66,8 @@ def init_db():
     # Users table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            chat_id VARCHAR(50) PRIMARY KEY,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chat_id VARCHAR(50) UNIQUE,
             username VARCHAR(100),
             name LONGBLOB,
             project LONGBLOB,
@@ -81,6 +82,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS reports (
             id INT AUTO_INCREMENT PRIMARY KEY,
             chat_id VARCHAR(50),
+            user_name VARCHAR(255),
             task LONGBLOB,
             percent INT,
             status VARCHAR(50),
@@ -160,14 +162,15 @@ def save_report(user: Dict[str, Any], task: str, percent: int, status: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     encrypted_task = encrypt(task)
+    user_name = user.get("name", "Unknown")
     
     # Use Cambodia timezone for creation timestamp
     phnom_penh = pytz.timezone('Asia/Phnom_Penh')
     now = datetime.now(phnom_penh).strftime('%Y-%m-%d %H:%M:%S')
     
     cursor.execute(
-        "INSERT INTO reports (chat_id, task, percent, status, created_at) VALUES (%s, %s, %s, %s, %s)",
-        (str(user["chat_id"]), encrypted_task, percent, status, now)
+        "INSERT INTO reports (chat_id, user_name, task, percent, status, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+        (str(user["chat_id"]), user_name, encrypted_task, percent, status, now)
     )
     conn.commit()
     cursor.close()
