@@ -194,36 +194,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text(f"Developed by *{DEVELOPER_NAME}*.", parse_mode=ParseMode.MARKDOWN)
 
     # Process report OR Chat
-    match = re.search(r"(\d+)%?$", text)
+    # Multi-line task detection: Split text by lines and look for % or numbers at the end of each.
+    raw_lines = text.strip().split('\n')
+    tasks_to_log = []
     
-    if not match:
-        await update.message.chat.send_action(action="typing")
-        reply = await ask_openrouter(user, text)
-        return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
+    for line in raw_lines:
+        line_match = re.search(r"(\d+)%?$", line.strip())
+        if line_match:
+            percent = int(line_match.group(1))
+            task_name = re.sub(r"\s*(\d+)%?$", "", line.strip()).strip()
+            if task_name:
+                tasks_to_log.append((task_name, percent))
 
-    percent = int(match.group(1))
-    task = re.sub(r"\s*(\d+)%?$", "", text).strip()
-
-    if not task:
-        # If it's just a number without task text, also treat as chat
+    # If no tasks are found on any lines, treat as a chat message.
+    if not tasks_to_log:
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
         return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
     # If the user hasn't configured a profile, they probably didn't intend to log a task.
-    # Treat this message as a regular chat message instead of throwing an error.
     if not user.get("name") or not user.get("project"):
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
         return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
-    status_text = "Completed" if percent == 100 else "In Progress"
-
     now = datetime.now()
     date_str = now.strftime("%d-%m-%Y")
     date_display = now.strftime("%d %B %Y")
+    timestamp = now.strftime("%H:%M")
 
-    storage.save_report(user, task, percent, status_text, date_str, now.strftime("%H:%M"))
+    # Save all found tasks
+    for task_name, percent in tasks_to_log:
+        status_text = "Completed" if percent == 100 else "In Progress"
+        storage.save_report(user, task_name, percent, status_text, date_str, timestamp)
 
     # Build formatted report
     report_data = storage.load_today_report(user, date_str)
