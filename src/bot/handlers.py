@@ -205,8 +205,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         line = line.strip()
         if not line: continue
         
-        # Look for [number] followed by % at the END of this line
-        match = re.search(r"(.*?)(\d+)\s*%$", line)
+        # Look for [number] followed by % ANYWHERE in the line
+        match = re.search(r"(.*?)(\d+)\s*%", line)
         if match:
             raw_name = match.group(1).strip()
             percent = int(match.group(2))
