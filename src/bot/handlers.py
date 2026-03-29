@@ -16,8 +16,8 @@ def get_setup_guide() -> str:
         "Click the *Setup* button to set your Name and Project.\n"
         "*2. Log Your Tasks*\n"
         "To save a task, include a **%** at the end:\n"
-        "- `Fix login bug 100%`\n"
-        "- `Design Home Page 50%`\n"
+        "- Fix login bug 100%\n"
+        "- Design Home Page 50%\n"
         "*3. View Report*\n"
         "Click the *Show* button to see your formatted Daily Report.\n"
         "🔐 *Privacy*: Your data is 100% encrypted and safe!"
@@ -270,12 +270,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("*2. Progress on Tasks*")
     if completed:
         lines.append("*Completed*")
-        for i, t in enumerate(completed, 1):
-            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
+        for t in completed:
+            lines.append(f"- {t['task']} ({t['percent']}%)")
     if in_progress:
         lines.append("*In Progress*")
-        for i, t in enumerate(in_progress, 1):
-            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
+        for t in in_progress:
+            lines.append(f"- {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
@@ -319,12 +319,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("*2. Progress on Tasks*")
     if completed:
         lines.append("*Completed*")
-        for i, t in enumerate(completed, 1):
-            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
+        for t in completed:
+            lines.append(f"- {t['task']} ({t['percent']}%)")
     if in_progress:
         lines.append("*In Progress*")
-        for i, t in enumerate(in_progress, 1):
-            lines.append(f"{i}. {t['task']} ({t['percent']}%)")
+        for t in in_progress:
+            lines.append(f"- {t['task']} ({t['percent']}%)")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
