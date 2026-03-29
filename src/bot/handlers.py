@@ -194,19 +194,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text(f"Developed by *{DEVELOPER_NAME}*.", parse_mode=ParseMode.MARKDOWN)
 
     # Process report OR Chat
-    # Multi-line task detection: Split text by lines and look for % or numbers at the end of each.
-    raw_lines = text.strip().split('\n')
+    # Advanced multi-task detection: Look for patterns of [text] followed by [number]%?
+    # This works across multiple lines or even multiple tasks on the same line.
+    # Ex: "Fixed bugs 100 Fix issues 50" -> catches both.
     tasks_to_log = []
     
-    for line in raw_lines:
-        line_match = re.search(r"(\d+)%?$", line.strip())
-        if line_match:
-            percent = int(line_match.group(1))
-            task_name = re.sub(r"\s*(\d+)%?$", "", line.strip()).strip()
-            if task_name:
-                tasks_to_log.append((task_name, percent))
+    # This regex finds text followed by a number (and optional %)
+    # It avoids greedily grabbing the numbers.
+    pattern = r"([a-zA-Z\s\u2022\-\.]+?)\s*(\d+)%?\b"
+    found_matches = re.findall(pattern, text)
+    
+    for task_name, percent_str in found_matches:
+        task_name = task_name.strip()
+        # Clean up common prefixes from chat or bullet points
+        task_name = re.sub(r"^[\u2022\-\*\d\.]+\s*", "", task_name).strip()
+        if task_name:
+            tasks_to_log.append((task_name, int(percent_str)))
 
-    # If no tasks are found on any lines, treat as a chat message.
+    # If no tasks are found, treat as a chat message.
     if not tasks_to_log:
         await update.message.chat.send_action(action="typing")
         reply = await ask_openrouter(user, text)
