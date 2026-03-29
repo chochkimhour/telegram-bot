@@ -16,11 +16,11 @@ def get_setup_guide() -> str:
         "Click the *Setup* button to set your Name and Project.\n"
         "*2. Log Your Tasks*\n"
         "To save a task, include a **%** at the end:\n"
-        "`Fix login bug 100%`\n"
-        "`Design Home Page 50%`\n"
+        "- `Fix login bug 100%`\n"
+        "- `Design Home Page 50%`\n"
         "*3. View Report*\n"
         "Click the *Show* button to see your formatted Daily Report.\n"
-        "*Privacy*: Your data is 100% encrypted and safe!"
+        "🔐 *Privacy*: Your data is 100% encrypted and safe!"
     )
 
 logger = logging.getLogger(__name__)
