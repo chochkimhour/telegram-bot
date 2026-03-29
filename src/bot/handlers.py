@@ -11,15 +11,17 @@ from src.bot import storage
 
 def get_setup_guide() -> str:
     return (
-        "💡 *Pro-Tips for New Users*\n"
+        "🚀 *How to use My Boy Bot:*\n"
         f"{'─' * 20}\n"
-        "1️⃣ *Setup Your Profile*: Use the *Setup* button (or /start) to tell me your name and project.\n"
-        "2️⃣ *Logging Tasks*: To log progress, simply send me a message with a percentage and a `%` sign.\n"
-        "   *Example*: `Fixed bugs 100%` or `Working on UI 50%`.\n"
-        "3️⃣ *Daily Reports*: Use the *Show* button to see your formatted daily report.\n"
-        "4️⃣ *Stay Private*: All your data is encrypted with AES-256 for your privacy.\n"
-        f"{'─' * 20}\n"
-        "Ready? Click *Setup* now to begin! 🚀"
+        "✍️ *1. Setup Profile*\n"
+        "Click the *Setup* button (or /start) to set your Name and Project.\n\n"
+        "✅ *2. Log Your Tasks*\n"
+        "To save a task, include a **%** at the end:\n"
+        "👉 `Fix login bug 100%`\n"
+        "👉 `Design Home Page 50%`\n\n"
+        "📁 *3. View Report*\n"
+        "Click the *Show* button to see your formatted Daily Report.\n\n"
+        "🔐 *Privacy*: Your data is 100% encrypted and safe!"
     )
 
 logger = logging.getLogger(__name__)
@@ -239,7 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If the user hasn't configured a profile, show the pro-tip guide.
     if not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"👋 *Hi {update.effective_chat.first_name}! Notice:*\n\n" + get_setup_guide(),
+            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -291,7 +293,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not user or not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"⚠️ *Profile Incomplete*\n\n" + get_setup_guide(),
+            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -366,7 +368,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not user or not user.get("name") or not user.get("project"):
         return await update.message.reply_text(
-            f"👤 *Profile Not Set*\n\n" + get_setup_guide(),
+            f"👤 *Your profile is not set up*\n\n" + get_setup_guide(),
             parse_mode=ParseMode.MARKDOWN
         )
         
