@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import time
+import pytz
 from datetime import datetime
 from pathlib import Path
 from cryptography.fernet import Fernet
@@ -75,7 +76,7 @@ def init_db():
         )
     """)
     
-    # Reports table
+    # Reports table - combined created_at
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reports (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -83,8 +84,7 @@ def init_db():
             task LONGBLOB,
             percent INT,
             status VARCHAR(50),
-            date VARCHAR(20),
-            time VARCHAR(20),
+            created_at DATETIME,
             FOREIGN KEY (chat_id) REFERENCES users (chat_id)
         )
     """)
@@ -156,24 +156,30 @@ def update_user(chat_id: str, key: str, value: Any):
     cursor.close()
     conn.close()
 
-def save_report(user: Dict[str, Any], task: str, percent: int, status: str, date: str, timestamp: str):
+def save_report(user: Dict[str, Any], task: str, percent: int, status: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     encrypted_task = encrypt(task)
+    
+    # Use Cambodia timezone for creation timestamp
+    phnom_penh = pytz.timezone('Asia/Phnom_Penh')
+    now = datetime.now(phnom_penh).strftime('%Y-%m-%d %H:%M:%S')
+    
     cursor.execute(
-        "INSERT INTO reports (chat_id, task, percent, status, date, time) VALUES (%s, %s, %s, %s, %s, %s)",
-        (str(user["chat_id"]), encrypted_task, percent, status, date, timestamp)
+        "INSERT INTO reports (chat_id, task, percent, status, created_at) VALUES (%s, %s, %s, %s, %s)",
+        (str(user["chat_id"]), encrypted_task, percent, status, now)
     )
     conn.commit()
     cursor.close()
     conn.close()
 
-def load_today_report(user: Dict[str, Any], date: str) -> Optional[Dict[str, Any]]:
+def load_today_report(user: Dict[str, Any], date_str: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    # Filter by the date portion of created_at
     cursor.execute(
-        "SELECT * FROM reports WHERE chat_id = %s AND date = %s", 
-        (str(user["chat_id"]), date)
+        "SELECT *, DATE_FORMAT(created_at, '%H:%M') as time_str FROM reports WHERE chat_id = %s AND DATE(created_at) = %s", 
+        (str(user["chat_id"]), date_str)
     )
     rows = cursor.fetchall()
     cursor.close()
@@ -188,20 +194,20 @@ def load_today_report(user: Dict[str, Any], date: str) -> Optional[Dict[str, Any
             "task": decrypt(row["task"]),
             "percent": row["percent"],
             "status": row["status"],
-            "time": row["time"]
+            "time": row["time_str"]
         })
         
     return {
-        "date": date,
+        "date": date_str,
         "employee": user.get("name"),
         "project": user.get("project"),
         "tasks": tasks
     }
 
-def clear_today_report(user: Dict[str, Any], date: str):
+def clear_today_report(user: Dict[str, Any], date_str: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM reports WHERE chat_id = %s AND date = %s", (str(user["chat_id"]), date))
+    cursor.execute("DELETE FROM reports WHERE chat_id = %s AND DATE(created_at) = %s", (str(user["chat_id"]), date_str))
     conn.commit()
     cursor.close()
     conn.close()

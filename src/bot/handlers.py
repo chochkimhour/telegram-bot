@@ -2,6 +2,7 @@ import logging
 import re
 import os
 import httpx
+import pytz
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ParseMode
@@ -223,15 +224,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await ask_openrouter(user, text)
         return await update.message.reply_text(format_ai_response(reply), parse_mode=ParseMode.MARKDOWN)
 
-    now = datetime.now()
-    date_str = now.strftime("%d-%m-%Y")
+    now = datetime.now(pytz.timezone('Asia/Phnom_Penh'))
+    date_str = now.strftime("%Y-%m-%d")
     date_display = now.strftime("%d %B %Y")
-    timestamp = now.strftime("%H:%M")
 
     # Save all found tasks
     for task_name, percent in tasks_to_log:
         status_text = "Completed" if percent == 100 else "In Progress"
-        storage.save_report(user, task_name, percent, status_text, date_str, timestamp)
+        storage.save_report(user, task_name, percent, status_text)
 
     # Build formatted report
     report_data = storage.load_today_report(user, date_str)
@@ -250,12 +250,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("*2. Progress on Tasks*")
     if completed:
         lines.append("*Completed*")
-        for t in completed:
-            lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
+        for i, t in enumerate(completed, 1):
+            lines.append(f"{i}. {t['task']} {t['percent']}%")
     if in_progress:
-        lines.append("*In Progress*")
-        for t in in_progress:
-            lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
+        lines.append("\n*In Progress*")
+        for i, t in enumerate(in_progress, 1):
+            lines.append(f"{i}. {t['task']} {t['percent']}%")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
@@ -273,8 +273,8 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not user.get("name") or not user.get("project"):
         return await update.message.reply_text("Please use /start to set your name and project first.")
         
-    now = datetime.now()
-    date_str = now.strftime("%d-%m-%Y")
+    now = datetime.now(pytz.timezone('Asia/Phnom_Penh'))
+    date_str = now.strftime("%Y-%m-%d")
     date_display = now.strftime("%d %B %Y")
     
     report_data = storage.load_today_report(user, date_str)
@@ -296,12 +296,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("*2. Progress on Tasks*")
     if completed:
         lines.append("*Completed*")
-        for t in completed:
-            lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
+        for i, t in enumerate(completed, 1):
+            lines.append(f"{i}. {t['task']} {t['percent']}%")
     if in_progress:
-        lines.append("*In Progress*")
-        for t in in_progress:
-            lines.append(f"\u2022 {t['task']} ({t['percent']}%)")
+        lines.append("\n*In Progress*")
+        for i, t in enumerate(in_progress, 1):
+            lines.append(f"{i}. {t['task']} {t['percent']}%")
     if not completed and not in_progress:
         lines.append("Status: N/A")
     lines.append("*3. Challenges / Issues*")
@@ -319,8 +319,8 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not user.get("name"):
         return await update.message.reply_text("Please use /start to set your name first.")
         
-    now = datetime.now()
-    date_str = now.strftime("%d-%m-%Y")
+    now = datetime.now(pytz.timezone('Asia/Phnom_Penh'))
+    date_str = now.strftime("%Y-%m-%d")
     storage.clear_today_report(user, date_str)
     await update.message.reply_text("Today's tasks have been cleared.")
 
