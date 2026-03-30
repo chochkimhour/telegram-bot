@@ -32,4 +32,4 @@ services:
       DB_HOST: db
       DB_PORT: 3306
     ports:
-      - "10000:10000"
+      - "8000:8000"

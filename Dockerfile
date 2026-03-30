@@ -14,6 +14,9 @@ ENV PYTHONUNBUFFERED=1
 ENV MALLOC_ARENA_MAX=2
 ENV PYTHONMALLOC=malloc
 
-# Runs the long-lived Telegram bot (polling) inside the container.
+# Expose the webhook port
+EXPOSE 8000
+
+# Start the FastAPI webhook server
 CMD ["python", "main.py"]
 
