@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
         )
-        logger.info(f"Webhook registered at: {full_webhook_url}")
+        logger.info(f"Webhook registered")
     else:
         logger.warning(
             "WEBHOOK_URL is not set in .env — webhook NOT registered with Telegram. "
@@ -103,7 +103,13 @@ async def telegram_webhook(request: Request):
 @web.get("/health")
 async def health():
     """Simple health-check endpoint for Docker / reverse-proxy."""
-    return {"status": "healthy"}
+    return {
+        "total": 1,
+        "data": {"status": "healthy"},
+        "status": 200,
+        "message": "OK",
+        "error": None
+    }
 
 
 def run():
