@@ -103,7 +103,7 @@ async def telegram_webhook(request: Request):
 @web.get("/health")
 async def health():
     """Simple health-check endpoint for Docker / reverse-proxy."""
-    return {"status": "ok", "bot": BOT_TOKEN[:10] + "..."}
+    return {"status": "healthy"}
 
 
 def run():
@@ -117,4 +117,5 @@ def run():
         host="0.0.0.0",
         port=PORT,
         log_level="info",
+        access_log=False,
     )
