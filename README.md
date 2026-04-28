@@ -1,5 +1,14 @@
 # Telegram Daily Report and AI Chatbot
 
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-Webhooks-009688)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)
+![OpenRouter](https://img.shields.io/badge/OpenRouter-AI-111827)
+![CI](https://img.shields.io/badge/GitHub_Actions-CI-2088FF)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 A professional Telegram bot for daily task reporting and AI-assisted chat. The bot receives Telegram updates through a FastAPI webhook, stores user profiles and reports in MySQL, encrypts sensitive fields, and forwards regular chat messages to OpenRouter.
 
 ## Features
