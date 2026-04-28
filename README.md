@@ -10,6 +10,7 @@ A professional Telegram bot for daily task reporting and AI-assisted chat. The b
 - User profile setup for employee name and project name.
 - MySQL persistence with encrypted profile, task, and chat-history fields.
 - FastAPI webhook server with a `/health` endpoint.
+- GitHub Actions CI for linting and syntax checks.
 
 ## Requirements
 
@@ -124,10 +125,16 @@ Write a short summary for today's progress.
 - Keep `WEBHOOK_URL` set to the public HTTPS origin only, without the webhook path.
 - Restrict database access to trusted hosts only.
 
+## Continuous Integration
+
+The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+The workflow runs on pushes to `main` or `master` and on pull requests. It installs dependencies, runs Ruff linting, and compiles Python files to catch syntax errors without requiring a live MySQL database.
+
 ## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.
 
 ## Copyright
 
-Copyright (c) 2026 Choch Kimhour. All rights reserved.
+Copyright (c) 2026 Choch Kimhour.
