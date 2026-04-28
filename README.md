@@ -1,99 +1,133 @@
-# Telegram Daily Report & AI Chatbot
+# Telegram Daily Report and AI Chatbot
 
-A multi-purpose Telegram bot built with Python that seamlessly integrates **Daily Task Reporting** with a powerful **AI Chat Assistant** powered by OpenRouter. 
+A professional Telegram bot for daily task reporting and AI-assisted chat. The bot receives Telegram updates through a FastAPI webhook, stores user profiles and reports in MySQL, encrypts sensitive fields, and forwards regular chat messages to OpenRouter.
 
-## 🌟 Features
+## Features
 
-- **Daily Task Reports**: Easily track your daily tasks by sending simple messages.
-- **Smart Formatting**: Automatically generates clean, professional progress reports.
-- **All-in-One AI Chatbot**: Talk to the bot normally to get instant AI responses powered by OpenRouter's vast selection of models. It automatically detects the difference between a task update and a chat message.
-- **Profile Management**: Set up your name and project effortlessly.
+- Daily task reporting with percentage-based progress tracking.
+- Automatic report formatting for completed and in-progress tasks.
+- AI chat support through OpenRouter for non-report messages.
+- User profile setup for employee name and project name.
+- MySQL persistence with encrypted profile, task, and chat-history fields.
+- FastAPI webhook server with a `/health` endpoint.
 
-## 🛠️ Requirements
+## Requirements
 
-- Python 3.10+
-- `python-telegram-bot`
-- `python-dotenv`
-- `httpx` (for async OpenRouter API calls)
+- Python 3.12 or compatible Python 3.10+
+- Telegram bot token from BotFather
+- OpenRouter API key
+- MySQL 8.0
 
-## 🚀 Setup & Installation
+## Project Structure
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/kimhourchoch-zin/Telegram-Bot.git
-   cd Telegram-Bot
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Environment Variables:**
-   Create a `.env` file in the root directory and add your API keys:
-   ```env
-   BOT_TOKEN=your_telegram_bot_token_here
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
-   ```
-
-4. **Run the bot:**
-   ```bash
-   python main.py
-   ```
-   *(Note: this uses `run_polling()`; Docker deployment also runs the same long-lived process.)*
-
-## OpenRouter model
-
-By default the bot uses OpenAI's GPT-3.5 Turbo via OpenRouter: `openai/gpt-3.5-turbo`.
-You can override it with `OPENROUTER_MODEL` (and optionally `OPENROUTER_MAX_TOKENS`, `OPENROUTER_TEMPERATURE`).
-
-## Deploy on Your Own Server (Docker, 24/7)
-
-1. Install Docker on your server.
-2. Make sure `BOT_TOKEN` and `OPENROUTER_API_KEY` are set in `.env`.
-3. Build and start:
-
-```bash
-docker compose up -d --build
+```text
+.
+|-- main.py                 # Application entry point
+|-- src/bot/main.py         # FastAPI webhook server and Telegram application setup
+|-- src/bot/handlers.py     # Telegram commands, message parsing, and OpenRouter integration
+|-- src/bot/storage.py      # MySQL persistence and field encryption
+|-- requirements.txt        # Python dependencies
+`-- .env.example            # Environment variable template
 ```
 
-To restart:
+## Configuration
+
+Create a `.env` file from the example template:
 
 ```bash
-docker compose restart
+cp .env.example .env
 ```
 
-Logs:
+Configure the following values:
+
+```env
+WEBHOOK_URL=https://your-domain.com
+PORT=8000
+
+BOT_TOKEN=your_telegram_bot_token
+BOT_NAME=My Bot
+DEVELOPER_NAME=Your Name
+
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=openai/gpt-3.5-turbo
+
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=bot_db
+DB_USER=bot_user
+DB_PASSWORD=bot_pass
+
+ENCRYPTION_KEY=your_fernet_key
+```
+
+Generate an encryption key with:
 
 ```bash
-docker compose logs -f my-boy-bot
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-## 💬 Usage
+Keep `ENCRYPTION_KEY` stable after setup. Changing it prevents existing encrypted profile, report, and chat-history data from being decrypted.
 
-### Basic Commands
-- `/start` - Start the bot and initialize your profile (Name and Project).
-- `/setup` - Configure your profile for daily reporting (prompts for your name, then project).
-- `/show` - View your generated daily progress report for today.
-- `/profile` - Check your currently configured Name and Project.
-- `/clear` - Wipe out all tasks logged for today.
-- `/reset` - Clear your profile to set a new Name and Project.
+## Running the Bot
 
-### How to use the Bot
+Install dependencies:
 
-1. **Adding a Task Update:**
-   Send a message ending with a number or percentage.
-   - Example: `Fixed login screen bug 100%`
-   - Example: `Setup database schema 50`
-   *If the number is 100, it's marked as "Completed". Otherwise, it's marked as "In Progress".*
+```bash
+pip install -r requirements.txt
+```
 
-2. **Chatting with AI:**
-   Just talk to the bot! If your message doesn't format like a task update (i.e. doesn't end in a number), the bot will forward your query to the OpenRouter AI and reply instantly.
-   - Example: `What are the top 3 frameworks for Python?`
-   - Example: `Write a regular expression for an email address.`
+Make sure MySQL is running and the database settings in `.env` are valid.
 
-## 📂 Project Structure
+Start the webhook server:
 
-- `main.py`: The entry point configuring the bot application.
-- `src/bot/handlers.py`: Contains all command logic, message parsing, AI integration, and routing.
-- `src/bot/storage.py`: Handles local JSON based storage for users and their daily reports in the `/data/` folder.
+```bash
+python main.py
+```
+
+The server listens on `0.0.0.0:${PORT}` and exposes:
+
+- `POST /webhook/{BOT_TOKEN}` for Telegram updates.
+- `GET /health` for health checks.
+
+Telegram requires `WEBHOOK_URL` to be a public HTTPS URL.
+
+## Bot Commands
+
+- `/start` - Create or resume a user session and show the main menu.
+- `/setup` - Configure the user's name and project.
+- `/show` - Show today's generated daily progress report.
+- `/profile` - Show the configured profile.
+- `/clear` - Clear today's recorded tasks.
+- `/reset` - Reset the configured name and project.
+
+## Usage
+
+Set up a profile first with `/setup`, then send task updates ending in a percentage:
+
+```text
+Fixed login screen bug 100%
+Created dashboard layout 50%
+```
+
+Tasks at `100%` are marked as completed. Other percentages are marked as in progress.
+
+Messages that do not match the task format are treated as AI chat messages and sent to OpenRouter:
+
+```text
+Write a short summary for today's progress.
+```
+
+## Security Notes
+
+- Do not commit `.env` or database files.
+- Use a strong, stable `ENCRYPTION_KEY`.
+- Keep `WEBHOOK_URL` set to the public HTTPS origin only, without the webhook path.
+- Restrict database access to trusted hosts only.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
+
+## Copyright
+
+Copyright (c) 2026 Choch Kimhour. All rights reserved.
