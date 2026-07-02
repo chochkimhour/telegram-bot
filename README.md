@@ -145,4 +145,4 @@ This project is licensed under the MIT License. See `LICENSE` for details.
 
 ## Copyright
 
-Copyright (c) 2026 Choch Kimhour.
+Copyright (c) 2026.
