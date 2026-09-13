@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-khmer-translator"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = [
+    "python-telegram-bot==21.6",
+    "python-dotenv==1.0.0",
+    "httpx>=0.24.0",
+    "langdetect==1.0.9",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+]
+
+[tool.setuptools]
+packages = ["src", "src.bot"]

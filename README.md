@@ -1,148 +1,84 @@
-# Telegram Daily Report and AI Chatbot
+# Telegram English–Khmer Translator
 
-![Python](https://img.shields.io/badge/Python-3.12-blue)
-![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-Webhooks-009688)
-![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)
-![OpenRouter](https://img.shields.io/badge/OpenRouter-AI-111827)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-26A5E4)](https://core.telegram.org/bots)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Webhook-009688)](https://fastapi.tiangolo.com/)
+[![MyMemory](https://img.shields.io/badge/Translation-MyMemory-orange)](https://mymemory.translated.net/doc/spec.php)
+[![Render](https://img.shields.io/badge/Deploy-Render-46E3B7)](https://render.com/)
+[![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF)](https://github.com/features/actions)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-A professional Telegram bot for daily task reporting and AI-assisted chat. The bot receives Telegram updates through a FastAPI webhook, stores user profiles and reports in MySQL, encrypts sensitive fields, and forwards regular chat messages to OpenRouter.
+A simple Telegram bot that translates text from any language into English and Khmer.
 
-## Features
+## What it does
 
-- Daily task reporting with percentage-based progress tracking.
-- Automatic report formatting for completed and in-progress tasks.
-- AI chat support through OpenRouter for non-report messages.
-- User profile setup for employee name and project name.
-- MySQL persistence with encrypted profile, task, and chat-history fields.
-- FastAPI webhook server with a `/health` endpoint.
-- GitHub Actions CI for linting and syntax checks.
+- Send text in any language.
+- Choose English, Khmer, or Both with the menu buttons.
+- Send or forward text, then choose a button for translation.
+- No database and no user data storage.
+- Uses a Telegram webhook and can run on Render.
 
 ## Requirements
 
-- Python 3.12 or compatible Python 3.10+
-- Telegram bot token from BotFather
-- OpenRouter API key
-- MySQL 8.0
+- Python 3.10+
+- A Telegram bot token from [@BotFather](https://t.me/BotFather)
+- No translation API key is required. The bot uses the MyMemory translation API.
 
-## Project Structure
+## Run locally
 
-```text
-.
-|-- main.py                 # Application entry point
-|-- src/bot/main.py         # FastAPI webhook server and Telegram application setup
-|-- src/bot/handlers.py     # Telegram commands, message parsing, and OpenRouter integration
-|-- src/bot/storage.py      # MySQL persistence and field encryption
-|-- requirements.txt        # Python dependencies
-`-- .env.example            # Environment variable template
-```
+1. Create a virtual environment and install packages:
 
-## Configuration
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install .
+   ```
 
-Create a `.env` file from the example template:
+2. Copy `.env.example` to `.env` and add your `BOT_TOKEN`. `MYMEMORY_EMAIL` is optional.
 
-```bash
-cp .env.example .env
-```
+3. Start the server:
 
-Configure the following values:
+   ```bash
+   python main.py
+   ```
 
-```env
-WEBHOOK_URL=https://your-domain.com
-PORT=8000
+When `WEBHOOK_URL` is empty, the bot automatically uses local polling, so you can test it directly in Telegram without ngrok or a webhook. The local health server is not used in polling mode.
 
-BOT_TOKEN=your_telegram_bot_token
-BOT_NAME=My Bot
-DEVELOPER_NAME=Your Name
+The default local port is `9999`.
 
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=openai/gpt-3.5-turbo
+## Deploy on Render
 
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_NAME=bot_db
-DB_USER=bot_user
-DB_PASSWORD=bot_pass
+1. Push this project to GitHub.
+2. In Render, choose **New → Web Service** and connect the repository.
+3. Use these settings:
 
-ENCRYPTION_KEY=your_fernet_key
-```
+   - **Runtime:** Python 3
+   - **Build command:** `pip install .`
+   - **Start command:** `python main.py`
+   - **Health check path:** `/health`
 
-Generate an encryption key with:
+4. Add these environment variables in Render:
 
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
+   - `BOT_TOKEN` = your Telegram bot token
+   - `MYMEMORY_EMAIL` = optional email for MyMemory usage limits
 
-Keep `ENCRYPTION_KEY` stable after setup. Changing it prevents existing encrypted profile, report, and chat-history data from being decrypted.
+Render provides the public `RENDER_EXTERNAL_URL` automatically. The bot uses it to register the Telegram webhook. Render also provides `PORT`; locally the default is `9999`.
 
-## Running the Bot
+## Commands
 
-Install dependencies:
+- `/start` — start the bot
+- `/help` — show instructions
 
-```bash
-pip install -r requirements.txt
-```
+Keep `.env` private and never commit API keys to GitHub.
 
-Make sure MySQL is running and the database settings in `.env` are valid.
+## GitHub Actions deployment
 
-Start the webhook server:
+The workflow in `.github/workflows/ci-cd.yml` compiles the project on every pull request and push. To deploy automatically to Render after pushes to `main` or `master`, create a Render deploy hook and add it to GitHub as the repository secret `RENDER_DEPLOY_HOOK_URL`. If the secret is missing, checks still run and deployment is skipped.
 
-```bash
-python main.py
-```
-
-The server listens on `0.0.0.0:${PORT}` and exposes:
-
-- `POST /webhook/{BOT_TOKEN}` for Telegram updates.
-- `GET /health` for health checks.
-
-Telegram requires `WEBHOOK_URL` to be a public HTTPS URL.
-
-## Bot Commands
-
-- `/start` - Create or resume a user session and show the main menu.
-- `/setup` - Configure the user's name and project.
-- `/show` - Show today's generated daily progress report.
-- `/profile` - Show the configured profile.
-- `/clear` - Clear today's recorded tasks.
-- `/reset` - Reset the configured name and project.
-
-## Usage
-
-Set up a profile first with `/setup`, then send task updates ending in a percentage:
-
-```text
-Fixed login screen bug 100%
-Created dashboard layout 50%
-```
-
-Tasks at `100%` are marked as completed. Other percentages are marked as in progress.
-
-Messages that do not match the task format are treated as AI chat messages and sent to OpenRouter:
-
-```text
-Write a short summary for today's progress.
-```
-
-## Security Notes
-
-- Do not commit `.env` or database files.
-- Use a strong, stable `ENCRYPTION_KEY`.
-- Keep `WEBHOOK_URL` set to the public HTTPS origin only, without the webhook path.
-- Restrict database access to trusted hosts only.
-
-## Continuous Integration
-
-The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
-
-The workflow runs on pushes to `main` or `master` and on pull requests. It installs dependencies, runs Ruff linting, and compiles Python files to catch syntax errors without requiring a live MySQL database.
+The bot uses MyMemory to automatically translate into English (`en`) and Khmer (`km`). Requests are limited to 500 bytes by the MyMemory API. See the [MyMemory API documentation](https://mymemory.translated.net/doc/spec.php).
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE` for details.
-
-## Copyright
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
 
 Copyright (c) 2026.
