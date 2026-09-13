@@ -1,8 +1,8 @@
 import logging
 import os
+from urllib.parse import quote
 
 import httpx
-from langdetect import detect
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -22,25 +22,52 @@ def language_keyboard() -> ReplyKeyboardMarkup:
 
 async def translate_text(text: str, target: str = "both") -> str:
     try:
-        source = detect(text)
-        logger.info("Translation requested: source=%s target=%s characters=%d", source, target, len(text))
+        logger.info("Translation requested: target=%s characters=%d", target, len(text))
 
         async def translate_to(language: str) -> str:
-            if source == language:
-                return text
-            params = {"q": text[:500], "langpair": f"{source}|{language}"}
-            email = os.getenv("MYMEMORY_EMAIL")
-            if email:
-                params["de"] = email
+            configured_url = os.getenv("LINGVA_URL", "https://lingva.ml").rstrip("/")
+            instances = [
+                configured_url,
+                "https://translate.igna.wtf",
+                "https://lingva.lunar.icu",
+                "https://translate.plausibility.cloud",
+            ]
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(
-                    "https://api.mymemory.translated.net/get", params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-                if data.get("responseStatus") != 200:
-                    raise RuntimeError(data.get("responseDetails", "Translation failed"))
-                return data["responseData"]["translatedText"]
+                last_error = "Translation failed"
+                for base_url in dict.fromkeys(instances):
+                    try:
+                        response = await client.get(
+                            f"{base_url}/api/v1/auto/{language}/{quote(text, safe='')}"
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        if "translation" in data:
+                            logger.info("Lingva instance used: %s", base_url)
+                            return data["translation"]
+                        last_error = data.get("error", last_error)
+                    except Exception as error:
+                        last_error = str(error)
+                        logger.warning("Lingva instance unavailable: %s", base_url)
+                try:
+                    response = await client.get(
+                        "https://translate.googleapis.com/translate_a/single",
+                        params={
+                            "client": "gtx",
+                            "sl": "auto",
+                            "tl": language,
+                            "dt": "t",
+                            "q": text,
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    translation = "".join(part[0] for part in data[0] if part[0])
+                    if translation:
+                        logger.info("Direct Google Translate fallback used")
+                        return translation
+                except Exception as error:
+                    last_error = str(error)
+                raise RuntimeError(last_error)
 
         if target == "en":
             return f"✨ Translation complete\n\n🇬🇧 English\n{await translate_to('en')}"
@@ -51,7 +78,6 @@ async def translate_text(text: str, target: str = "both") -> str:
         return (
             "✨ Translation complete\n\n"
             f"🇬🇧 English\n{english}\n\n"
-            "━━━━━━━━━━━━━━\n\n"
             f"🇰🇭 Khmer\n{khmer}"
         )
     except Exception:
