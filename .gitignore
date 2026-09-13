@@ -28,5 +28,6 @@ htmlcov/
 # Editors and operating systems
 .vscode/
 .idea/
+.vercel/
 .DS_Store
 Thumbs.db

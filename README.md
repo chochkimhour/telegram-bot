@@ -4,7 +4,7 @@
 [![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-26A5E4)](https://core.telegram.org/bots)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Webhook-009688)](https://fastapi.tiangolo.com/)
 [![MyMemory](https://img.shields.io/badge/Translation-MyMemory-orange)](https://mymemory.translated.net/doc/spec.php)
-[![Render](https://img.shields.io/badge/Deploy-Render-46E3B7)](https://render.com/)
+[![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000)](https://vercel.com/)
 [![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF)](https://github.com/features/actions)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
