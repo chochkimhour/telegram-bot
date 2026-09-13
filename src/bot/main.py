@@ -13,7 +13,9 @@ from src.bot.handlers import handle_message, help_command, start
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", "9999"))
-PUBLIC_URL = os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
+PUBLIC_URL = os.getenv("WEBHOOK_URL")
+if not PUBLIC_URL and os.getenv("VERCEL_URL"):
+    PUBLIC_URL = f"https://{os.getenv('VERCEL_URL')}"
 
 logging.basicConfig(format="[%(levelname)s] %(asctime)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,7 +51,8 @@ def build_application() -> Application:
 
 
 telegram_app = build_application()
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_PREFIX = "/api" if os.getenv("VERCEL") else ""
+WEBHOOK_PATH = f"{WEBHOOK_PREFIX}/webhook/{BOT_TOKEN}"
 web = FastAPI()
 
 

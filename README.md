@@ -16,7 +16,7 @@ A simple Telegram bot that translates text from any language into English and Kh
 - Choose English, Khmer, or Both with the menu buttons.
 - Send or forward text, then choose a button for translation.
 - No database and no user data storage.
-- Uses a Telegram webhook and can run on Render.
+- Uses a Telegram webhook and can run on Vercel.
 
 ## Requirements
 
@@ -42,27 +42,20 @@ A simple Telegram bot that translates text from any language into English and Kh
    python main.py
    ```
 
-When `WEBHOOK_URL` is empty, the bot automatically uses local polling, so you can test it directly in Telegram without ngrok or a webhook. The local health server is not used in polling mode.
+When `WEBHOOK_URL` is empty, the bot automatically uses local polling, so you can test it directly in Telegram without ngrok or a webhook. On Vercel, the bot automatically uses the Vercel deployment URL as its webhook URL.
 
 The default local port is `9999`.
 
-## Deploy on Render
+## Deploy on Vercel
 
 1. Push this project to GitHub.
-2. In Render, choose **New → Web Service** and connect the repository.
-3. Use these settings:
-
-   - **Runtime:** Python 3
-   - **Build command:** `pip install .`
-   - **Start command:** `python main.py`
-   - **Health check path:** `/health`
-
-4. Add these environment variables in Render:
+2. In Vercel, choose **Add New → Project** and import the repository.
+3. Add these environment variables in Vercel:
 
    - `BOT_TOKEN` = your Telegram bot token
    - `MYMEMORY_EMAIL` = optional email for MyMemory usage limits
 
-Render provides the public `RENDER_EXTERNAL_URL` automatically. The bot uses it to register the Telegram webhook. Render also provides `PORT`; locally the default is `9999`.
+4. Deploy the project. Vercel automatically detects `api/index.py` as a Python Function and provides the public URL used for the Telegram webhook.
 
 ## Commands
 
@@ -73,7 +66,7 @@ Keep `.env` private and never commit API keys to GitHub.
 
 ## GitHub Actions deployment
 
-The workflow in `.github/workflows/ci-cd.yml` compiles the project on every pull request and push. To deploy automatically to Render after pushes to `main` or `master`, create a Render deploy hook and add it to GitHub as the repository secret `RENDER_DEPLOY_HOOK_URL`. If the secret is missing, checks still run and deployment is skipped.
+The workflow in `.github/workflows/ci-cd.yml` compiles the project on every pull request and push. Vercel deploys automatically when the GitHub repository is connected to a Vercel project.
 
 The bot uses MyMemory to automatically translate into English (`en`) and Khmer (`km`). Requests are limited to 500 bytes by the MyMemory API. See the [MyMemory API documentation](https://mymemory.translated.net/doc/spec.php).
 
