@@ -2,6 +2,7 @@ import logging
 import os
 import base64
 import asyncio
+import contextlib
 import json
 from io import BytesIO
 
@@ -15,13 +16,27 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 ENGLISH = "🇬🇧 English"
 KHMER = "🇰🇭 Khmer"
-BOTH = "🌐 Both"
 TEXT_ONLY = "📝 Text"
 VOICE = "🔊 Voice"
 IMAGE_SOURCE = "🖼 Image text"
 MESSAGE_SOURCE = "💬 Message text"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
+active_tasks: dict[int, asyncio.Task] = {}
+
+
+def clean_text(value: str) -> str:
+    value = (value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    fence = chr(96) * 3
+    if value.startswith(fence) and value.endswith(fence):
+        lines = value.splitlines()
+        value = "\n".join(lines[1:-1]).strip()
+    cleaned_lines = []
+    for line in value.splitlines():
+        line = line.strip()
+        if line and line not in (fence, fence + "text", fence + "plaintext"):
+            cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
 
 
 async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> None:
@@ -141,7 +156,7 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                         response = await client.post(url, headers=headers, json=payload)
                         response.raise_for_status()
                         data = response.json()
-                        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        return clean_text(data["candidates"][0]["content"]["parts"][0]["text"])
                     except httpx.HTTPStatusError as error:
                         status = error.response.status_code
                         if status not in (429, 500, 503, 504) or attempt == 2:
@@ -155,17 +170,16 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
             logger.info("Image text extracted: characters=%d", len(extracted))
             return extracted
         if target == "en":
-            return f"✨ Translation complete\n\n🇬🇧 English\n{await translate_to('en')}"
+            return f"🇬🇧 English\n\n{await translate_to('en')}"
         if target == "km":
-            return f"✨ Translation complete\n\n🇰🇭 Khmer\n{await translate_to('km')}"
+            return f"🇰🇭 Khmer\n\n{await translate_to('km')}"
         english, khmer = await asyncio.gather(
             translate_to("en"),
             translate_to("km"),
         )
         return (
-            "✨ Translation complete\n\n"
-            f"🇬🇧 English\n{english}\n\n"
-            f"🇰🇭 Khmer\n{khmer}"
+            f"🇬🇧 English\n\n{english}\n\n"
+            f"🇰🇭 Khmer\n\n{khmer}"
         )
     except Exception:
         logger.exception("Translation request failed")
@@ -174,15 +188,14 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👋 Hello! Send or forward any text, then choose English, Khmer, or Both.",
+        "👋 Hello! Send or forward text or an image, then choose English, Khmer, Text, or Voice.",
         reply_markup=language_keyboard(),
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Send any text to receive both English and Khmer translations.\n\n"
-        "Choose English, Khmer, or Both before sending text.\n\n"
+        "Send or forward text or an image, then choose English, Khmer, Text, or Voice.\n\n"
         "Commands:\n"
         "/start - Start the translator\n"
         "/help - Show these instructions\n"
@@ -193,13 +206,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    active_task = active_tasks.get(chat_id)
+    if active_task and not active_task.done():
+        active_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await active_task
+        logger.info("Active request cancelled by user: chat_id=%s", chat_id)
     context.user_data.pop("pending_text", None)
     context.user_data.pop("pending_image", None)
     context.user_data.pop("pending_source", None)
     if redis_client:
         try:
             await asyncio.wait_for(
-                redis_client.delete(f"pending:{update.effective_chat.id}"), timeout=5
+                redis_client.delete(f"pending:{chat_id}"), timeout=5
             )
         except Exception as error:
             logger.warning("Redis clear skipped: %s", error)
@@ -252,7 +272,7 @@ async def send_voice(text: str, language: str = "en") -> BytesIO:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
-    text = update.message.text or update.message.caption or ""
+    text = clean_text(update.message.text or update.message.caption or "")
     image_data = None
     image_received = bool(
         update.message.photo
@@ -324,7 +344,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             audio = await asyncio.wait_for(send_voice(pending_text, language), timeout=45)
             await update.message.reply_voice(
                 voice=audio,
-                caption=f"🔊 {'Khmer' if language == 'km' else 'English'} voice",
                 reply_markup=language_keyboard(),
             )
         except Exception:
@@ -357,11 +376,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
                 return
             await update.message.chat.send_action(ChatAction.TYPING)
+            chat_id = update.effective_chat.id
+            translation_task = asyncio.create_task(
+                translate_text(pending_text, target, pending_image)
+            )
+            active_tasks[chat_id] = translation_task
             try:
-                result = await asyncio.wait_for(
-                    translate_text(pending_text, target, pending_image),
-                    timeout=60,
-                )
+                result = await asyncio.wait_for(translation_task, timeout=60)
             except asyncio.TimeoutError:
                 context.user_data.pop("pending_text", None)
                 context.user_data.pop("pending_image", None)
@@ -372,6 +393,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     "⏱️ This request took too long and was removed. Please try again with a smaller image or shorter text.",
                     reply_markup=language_keyboard(),
                 )
+                return
+            except asyncio.CancelledError:
+                logger.info("Translation cancelled: chat_id=%s", chat_id)
                 return
             except Exception:
                 context.user_data.pop("pending_text", None)
@@ -384,6 +408,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     reply_markup=language_keyboard(),
                 )
                 return
+            finally:
+                if active_tasks.get(chat_id) is translation_task:
+                    active_tasks.pop(chat_id, None)
             await update.message.reply_text(result, reply_markup=language_keyboard())
             return
         await update.message.reply_text(
