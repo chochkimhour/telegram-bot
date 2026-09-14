@@ -57,6 +57,7 @@ def build_application() -> Application:
         Application.builder()
         .token(BOT_TOKEN)
         .post_init(configure_bot_profile)
+        .concurrent_updates(True)
         .connect_timeout(30)
         .read_timeout(90)
         .write_timeout(90)

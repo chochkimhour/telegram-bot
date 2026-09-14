@@ -113,7 +113,7 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                 "generationConfig": {"temperature": 0.1},
             }
             headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-            async with httpx.AsyncClient(timeout=45) as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                 for attempt in range(3):
                     try:
@@ -189,6 +189,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     text = update.message.text or update.message.caption or ""
     image_data = None
+    image_received = bool(
+        update.message.photo
+        or (
+            update.message.document
+            and (update.message.document.mime_type or "").startswith("image/")
+        )
+    )
+    if image_received:
+        # Acknowledge immediately so the user is not left waiting while Telegram
+        # downloads the file and Gemini processes it.
+        await update.message.reply_text(
+            "📷 Image received. Preparing it now…\n\nChoose a button when processing is ready.",
+            reply_markup=language_keyboard(),
+        )
     try:
         if update.message.photo:
             for attempt in range(2):
@@ -246,10 +260,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
                 return
             await update.message.chat.send_action(ChatAction.TYPING)
-            await update.message.reply_text(
-                await translate_text(pending_text, target, pending_image),
-                reply_markup=language_keyboard(),
-            )
+            try:
+                result = await asyncio.wait_for(
+                    translate_text(pending_text, target, pending_image),
+                    timeout=60,
+                )
+            except asyncio.TimeoutError:
+                context.user_data.pop("pending_text", None)
+                context.user_data.pop("pending_image", None)
+                context.user_data.pop("pending_source", None)
+                await delete_pending(update.effective_chat.id)
+                logger.warning("Translation timed out and was removed: target=%s", target)
+                await update.message.reply_text(
+                    "⏱️ This request took too long and was removed. Please try again with a smaller image or shorter text.",
+                    reply_markup=language_keyboard(),
+                )
+                return
+            except Exception:
+                context.user_data.pop("pending_text", None)
+                context.user_data.pop("pending_image", None)
+                context.user_data.pop("pending_source", None)
+                await delete_pending(update.effective_chat.id)
+                logger.exception("Translation failed and pending data was removed")
+                await update.message.reply_text(
+                    "⚠️ I could not process that request, so it was removed. Please try again with a smaller image or shorter text.",
+                    reply_markup=language_keyboard(),
+                )
+                return
+            await update.message.reply_text(result, reply_markup=language_keyboard())
             return
         await update.message.reply_text(
             f"✅ {text} selected.\n\nSend or forward text or an image, then choose a language button.",
@@ -284,6 +322,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "📦 This message contains an image and separate text.\n\nWhat should I process?",
             reply_markup=source_keyboard(),
         )
+        return
+    if image_received:
+        # The immediate acknowledgement above is enough for image-only input.
+        # Keep the keyboard visible without sending a duplicate "Text received" prompt.
         return
     await update.message.reply_text(
         "📩 Text received.\n\nPlease choose a language below to translate it:",
