@@ -22,14 +22,23 @@ async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> Non
     if not redis_client:
         return
     data = {"text": text, "image": base64.b64encode(image_data).decode() if image_data else None}
-    await redis_client.set(f"pending:{chat_id}", json.dumps(data), ex=600)
+    try:
+        await asyncio.wait_for(
+            redis_client.set(f"pending:{chat_id}", json.dumps(data), ex=600), timeout=5
+        )
+    except Exception as error:
+        logger.warning("Redis save skipped: %s", error)
 
 
 async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
     if not redis_client:
         return "", None
-    raw = await redis_client.get(f"pending:{chat_id}")
-    await redis_client.delete(f"pending:{chat_id}")
+    try:
+        raw = await asyncio.wait_for(redis_client.get(f"pending:{chat_id}"), timeout=5)
+        await asyncio.wait_for(redis_client.delete(f"pending:{chat_id}"), timeout=5)
+    except Exception as error:
+        logger.warning("Redis load skipped: %s", error)
+        return "", None
     if not raw:
         return "", None
     data = json.loads(raw)
@@ -138,26 +147,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     text = update.message.text or update.message.caption or ""
     image_data = None
-    if update.message.photo:
-        for attempt in range(2):
-            try:
-                photo_file = await update.message.photo[-1].get_file()
-                image_data = bytes(await photo_file.download_as_bytearray())
-                break
-            except Exception:
-                if attempt == 1:
-                    raise
-                logger.warning("Image download timed out; retrying")
-    elif update.message.document and (update.message.document.mime_type or "").startswith("image/"):
-        for attempt in range(2):
-            try:
-                image_file = await update.message.document.get_file()
-                image_data = bytes(await image_file.download_as_bytearray())
-                break
-            except Exception:
-                if attempt == 1:
-                    raise
-                logger.warning("Image file download timed out; retrying")
+    try:
+        if update.message.photo:
+            for attempt in range(2):
+                try:
+                    photo_file = await update.message.photo[-1].get_file()
+                    image_data = bytes(await photo_file.download_as_bytearray())
+                    break
+                except Exception:
+                    if attempt == 1:
+                        raise
+                    logger.warning("Image download timed out; retrying")
+        elif update.message.document and (update.message.document.mime_type or "").startswith("image/"):
+            for attempt in range(2):
+                try:
+                    image_file = await update.message.document.get_file()
+                    image_data = bytes(await image_file.download_as_bytearray())
+                    break
+                except Exception:
+                    if attempt == 1:
+                        raise
+                    logger.warning("Image file download timed out; retrying")
+    except Exception:
+        logger.exception("Could not download image")
+        await update.message.reply_text(
+            "⚠️ I could not read that image. Please send a smaller image or try again.",
+            reply_markup=language_keyboard(),
+        )
+        return
     if not text and not image_data:
         return
     if text in (ENGLISH, KHMER, BOTH, TEXT_ONLY):

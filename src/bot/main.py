@@ -26,6 +26,14 @@ logging.getLogger("telegram").setLevel(logging.WARNING)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Telegram update failed", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ Something went wrong while processing that message. "
+                "Please try sending it again.",
+            )
+        except Exception:
+            logger.exception("Could not send error response")
 
 
 async def configure_bot_profile(application: Application) -> None:
