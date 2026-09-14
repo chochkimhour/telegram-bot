@@ -13,7 +13,8 @@ A simple Telegram bot that translates text and reads text from images using Goog
 ## What it does
 
 - Send or forward text in any language.
-- Choose `English`, `Khmer`, or `Both` for translation.
+- Choose `English` or `Khmer` for translation.
+- Send or paste text and choose `Voice` to receive spoken audio.
 - Send or forward an image and choose `Text` to extract readable text only.
 - Supports image captions and images sent as photos or files.
 - Images are acknowledged immediately, and slow requests are removed after 60 seconds with a user message.
@@ -52,10 +53,12 @@ After `/start`, the menu has four buttons in a 2×2 layout:
 
 ```text
 🇬🇧 English    🇰🇭 Khmer
-🌐 Both        📝 Text
+📝 Text        🔊 Voice
 ```
 
 For image OCR, send or forward the image first, then press `📝 Text`. The bot returns plain extracted text without headings or explanations.
+
+For voice, send or paste text, then press `🔊 Voice`. Khmer text is spoken in Khmer; other text is spoken in English. Keep the text reasonably short for faster audio generation.
 
 Images are limited to 10 MB. Failed downloads receive a friendly error message and do not stop the bot.
 

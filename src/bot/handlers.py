@@ -3,9 +3,11 @@ import os
 import base64
 import asyncio
 import json
+from io import BytesIO
 
 import httpx
 import redis.asyncio as redis
+from gtts import gTTS
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -15,6 +17,7 @@ ENGLISH = "🇬🇧 English"
 KHMER = "🇰🇭 Khmer"
 BOTH = "🌐 Both"
 TEXT_ONLY = "📝 Text"
+VOICE = "🔊 Voice"
 IMAGE_SOURCE = "🖼 Image text"
 MESSAGE_SOURCE = "💬 Message text"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -61,7 +64,7 @@ def language_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(ENGLISH), KeyboardButton(KHMER)],
-            [KeyboardButton(BOTH), KeyboardButton(TEXT_ONLY)],
+            [KeyboardButton(TEXT_ONLY), KeyboardButton(VOICE)],
         ],
         resize_keyboard=True,
     )
@@ -96,6 +99,8 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                     "For multi-column layouts, finish the left column from top to bottom before the next column. "
                     "Keep headings, paragraphs, lists, dates, numbers, and meaningful line breaks in their visual order. "
                     "Do not guess unclear characters; omit unreadable fragments rather than inventing text. "
+                    "Copy personal names, place names, organization names, phone numbers, IDs, email addresses, URLs, "
+                    "dates, and amounts exactly as visible. Do not normalize, translate, or transliterate proper names. "
                     "Do not translate, summarize, label, or explain. Ignore QR codes, logos, stamps, signatures, "
                     "decorative marks, watermarks, and isolated page numbers. Return plain text only."
                     if language == "text"
@@ -103,6 +108,9 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                     "If an image is included, first read visible text from top to bottom and left to right; "
                     "for columns, finish the left column before the next column. "
                     "Preserve meaning, names, numbers, emojis, paragraph order, and useful line breaks. "
+                    "Keep personal names, place names, organization names, IDs, phone numbers, email addresses, URLs, "
+                    "dates, and amounts exactly as provided when they are readable. Do not translate or transliterate "
+                    "proper names unless the source explicitly provides a standard translated name. "
                     "Do not invent missing or unreadable content. Return only the translation."
                 )
                 + f"\n\nCaption or message text:\n{text or '(none; read the image)'}"
@@ -116,6 +124,8 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                         "text": (
                             "You are a precise document OCR and translation assistant. "
                             "Use only visible source content. Never hallucinate missing words. "
+                            "Treat names and other proper nouns as protected text: preserve their spelling exactly "
+                            "whenever readable. "
                             "Return only the requested plain text or translation, without commentary."
                         )
                     }]
@@ -215,7 +225,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if has_pending:
         await update.message.reply_text(
             "✅ Bot is online and working.\n\n"
-            "⏳ You have a pending request. Choose English, Khmer, Both, or Text to continue.\n\n"
+                "⏳ You have a pending request. Choose English, Khmer, Text, or Voice to continue.\n\n"
             "Use /reset if it is stuck.",
             reply_markup=language_keyboard(),
         )
@@ -225,6 +235,18 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "✅ No pending request. Send or forward text or an image to begin.",
         reply_markup=language_keyboard(),
     )
+
+
+async def send_voice(text: str, language: str = "en") -> BytesIO:
+    audio = BytesIO()
+    audio.name = "translation.mp3"
+    speech_language = "km" if language == "km" else "en"
+    await asyncio.to_thread(
+        gTTS(text=text, lang=speech_language, slow=False).write_to_fp,
+        audio,
+    )
+    audio.seek(0)
+    return audio
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -280,8 +302,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     if not text and not image_data:
         return
-    if text in (ENGLISH, KHMER, BOTH, TEXT_ONLY):
-        target = {ENGLISH: "en", KHMER: "km", BOTH: "both", TEXT_ONLY: "text"}[text]
+    if text == VOICE:
+        pending_text = context.user_data.pop("pending_text", "")
+        context.user_data.pop("pending_image", None)
+        context.user_data.pop("pending_source", None)
+        if not pending_text:
+            pending_text, _ = await load_pending(update.effective_chat.id)
+        else:
+            await delete_pending(update.effective_chat.id)
+        if not pending_text:
+            await update.message.reply_text(
+                "🔊 Send or forward text first, then press Voice.",
+                reply_markup=language_keyboard(),
+            )
+            return
+        language = context.user_data.get("target", "en")
+        if language not in ("en", "km"):
+            language = "km" if any("\u1780" <= char <= "\u17ff" for char in pending_text) else "en"
+        try:
+            await update.message.chat.send_action(ChatAction.UPLOAD_VOICE)
+            audio = await asyncio.wait_for(send_voice(pending_text, language), timeout=45)
+            await update.message.reply_voice(
+                voice=audio,
+                caption=f"🔊 {'Khmer' if language == 'km' else 'English'} voice",
+                reply_markup=language_keyboard(),
+            )
+        except Exception:
+            logger.exception("Voice generation failed")
+            await update.message.reply_text(
+                "⚠️ I could not create the voice message. Please try again with shorter text.",
+                reply_markup=language_keyboard(),
+            )
+        return
+    if text in (ENGLISH, KHMER, TEXT_ONLY):
+        target = {ENGLISH: "en", KHMER: "km", TEXT_ONLY: "text"}[text]
         context.user_data["target"] = target
         logger.info("Translation option selected: target=%s", target)
         pending_text = context.user_data.pop("pending_text", "")
@@ -333,14 +387,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(result, reply_markup=language_keyboard())
             return
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nSend or forward text or an image, then choose a language button.",
+            f"✅ {text} selected.\n\nSend or forward text or an image, then choose English, Khmer, Text, or Voice.",
             reply_markup=language_keyboard(),
         )
         return
     if text in (IMAGE_SOURCE, MESSAGE_SOURCE):
         context.user_data["pending_source"] = "image" if text == IMAGE_SOURCE else "message"
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nNow choose English, Khmer, or Both:",
+            f"✅ {text} selected.\n\nNow choose English or Khmer:",
             reply_markup=language_keyboard(),
         )
         return
