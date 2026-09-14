@@ -2,8 +2,10 @@ import logging
 import os
 import base64
 import asyncio
+import json
 
 import httpx
+import redis.asyncio as redis
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -13,6 +15,25 @@ ENGLISH = "🇬🇧 English"
 KHMER = "🇰🇭 Khmer"
 BOTH = "🌐 Both"
 TEXT_ONLY = "📝 Text"
+redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
+
+
+async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> None:
+    if not redis_client:
+        return
+    data = {"text": text, "image": base64.b64encode(image_data).decode() if image_data else None}
+    await redis_client.set(f"pending:{chat_id}", json.dumps(data), ex=600)
+
+
+async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
+    if not redis_client:
+        return "", None
+    raw = await redis_client.get(f"pending:{chat_id}")
+    await redis_client.delete(f"pending:{chat_id}")
+    if not raw:
+        return "", None
+    data = json.loads(raw)
+    return data.get("text", ""), base64.b64decode(data["image"]) if data.get("image") else None
 
 
 def language_keyboard() -> ReplyKeyboardMarkup:
@@ -59,14 +80,20 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
             }
             headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
             async with httpx.AsyncClient(timeout=45) as client:
-                response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                    headers=headers,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                for attempt in range(3):
+                    try:
+                        response = await client.post(url, headers=headers, json=payload)
+                        response.raise_for_status()
+                        data = response.json()
+                        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    except httpx.HTTPStatusError as error:
+                        status = error.response.status_code
+                        if status not in (429, 500, 503, 504) or attempt == 2:
+                            raise
+                        delay = 2 ** attempt
+                        logger.warning("Gemini returned %s; retrying in %ss", status, delay)
+                        await asyncio.sleep(delay)
 
         if target == "text":
             extracted = await translate_to("text")
@@ -139,6 +166,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.info("Translation option selected: target=%s", target)
         pending_text = context.user_data.pop("pending_text", "")
         pending_image = context.user_data.pop("pending_image", None)
+        if not pending_text and not pending_image:
+            pending_text, pending_image = await load_pending(update.effective_chat.id)
         if pending_text or pending_image:
             if target == "text" and not pending_image:
                 await update.message.reply_text(
@@ -159,6 +188,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     context.user_data["pending_text"] = text.strip()
     context.user_data["pending_image"] = image_data
+    await save_pending(update.effective_chat.id, text.strip(), image_data)
     logger.info(
         "Content received for translation: characters=%d image=%s image_bytes=%d",
         len(text.strip()),

@@ -65,6 +65,7 @@ For image OCR, send or forward the image first, then press `📝 Text`. The bot 
    - `BOT_TOKEN` = your Telegram bot token
    - `GEMINI_API_KEY` = your Google Gemini API key
    - `GEMINI_MODEL` = `gemini-3.1-flash-lite`
+   - `REDIS_URL` = your Redis connection URL for pending images/text
 
 4. Deploy the project. Vercel automatically detects `api/index.py` as a Python Function and provides the public URL used for the Telegram webhook.
 
