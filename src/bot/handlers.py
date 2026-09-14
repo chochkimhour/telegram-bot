@@ -4,6 +4,7 @@ import base64
 import asyncio
 import contextlib
 import json
+import time
 from io import BytesIO
 
 import httpx
@@ -47,6 +48,11 @@ async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> Non
         await asyncio.wait_for(
             redis_client.set(f"pending:{chat_id}", json.dumps(data), ex=600), timeout=5
         )
+        logger.info(
+            "Redis pending data saved: image=%s characters=%d expires_seconds=600",
+            bool(image_data),
+            len(text),
+        )
     except Exception as error:
         logger.warning("Redis save skipped: %s", error)
 
@@ -61,9 +67,17 @@ async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
         logger.warning("Redis load skipped: %s", error)
         return "", None
     if not raw:
+        logger.info("Redis pending data not found")
         return "", None
     data = json.loads(raw)
-    return data.get("text", ""), base64.b64decode(data["image"]) if data.get("image") else None
+    pending_text = data.get("text", "")
+    pending_image = base64.b64decode(data["image"]) if data.get("image") else None
+    logger.info(
+        "Redis pending data loaded: image=%s characters=%d",
+        bool(pending_image),
+        len(pending_text),
+    )
+    return pending_text, pending_image
 
 
 async def delete_pending(chat_id: int) -> None:
@@ -153,10 +167,21 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                 for attempt in range(3):
                     try:
+                        logger.info(
+                            "Gemini request started: target=%s attempt=%d",
+                            language,
+                            attempt + 1,
+                        )
                         response = await client.post(url, headers=headers, json=payload)
                         response.raise_for_status()
                         data = response.json()
-                        return clean_text(data["candidates"][0]["content"]["parts"][0]["text"])
+                        result = clean_text(data["candidates"][0]["content"]["parts"][0]["text"])
+                        logger.info(
+                            "Gemini request succeeded: target=%s characters=%d",
+                            language,
+                            len(result),
+                        )
+                        return result
                     except httpx.HTTPStatusError as error:
                         status = error.response.status_code
                         if status not in (429, 500, 503, 504) or attempt == 2:
@@ -258,14 +283,34 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def send_voice(text: str, language: str = "en") -> BytesIO:
+    started = time.perf_counter()
+    logger.info(
+        "Voice generation requested: language=%s characters=%d",
+        language,
+        len(text),
+    )
     audio = BytesIO()
     audio.name = "translation.mp3"
     speech_language = "km" if language == "km" else "en"
-    await asyncio.to_thread(
-        gTTS(text=text, lang=speech_language, slow=False).write_to_fp,
-        audio,
-    )
+    try:
+        await asyncio.to_thread(
+            gTTS(text=text, lang=speech_language, slow=False).write_to_fp,
+            audio,
+        )
+    except Exception:
+        logger.exception(
+            "Voice provider request failed: language=%s characters=%d",
+            speech_language,
+            len(text),
+        )
+        raise
     audio.seek(0)
+    logger.info(
+        "Voice generated successfully: language=%s bytes=%d duration_ms=%d",
+        speech_language,
+        audio.getbuffer().nbytes,
+        int((time.perf_counter() - started) * 1000),
+    )
     return audio
 
 
@@ -344,6 +389,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             audio = await asyncio.wait_for(send_voice(pending_text, language), timeout=45)
             await update.message.reply_voice(
                 voice=audio,
+                reply_markup=language_keyboard(),
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Voice generation timed out: language=%s characters=%d",
+                language,
+                len(pending_text),
+            )
+            await update.message.reply_text(
+                "⏱️ Voice generation took too long and was stopped. Please try shorter text.",
                 reply_markup=language_keyboard(),
             )
         except Exception:

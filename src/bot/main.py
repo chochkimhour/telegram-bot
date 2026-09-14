@@ -6,6 +6,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from telegram import BotCommand, Update
+from telegram.error import RetryAfter
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from src.bot.handlers import clear_command, handle_message, help_command, start, status_command
@@ -49,11 +50,13 @@ async def configure_bot_profile(application: Application) -> None:
         ]
     )
     await application.bot.set_my_short_description(
-        "Translate any language into English, Khmer, or both."
+        "Translate text, read images, and create English or Khmer voice messages."
     )
     await application.bot.set_my_description(
-        "Send or forward any text to this bot. Choose English, Khmer, or Both, "
-        "and the bot will translate your text."
+        "📖 Send or forward text in any language and choose English or Khmer.\n\n"
+        "📝 Send an image and choose Text to extract clean, copyable text from it.\n\n"
+        "🔊 Send or paste text and choose Voice to receive audio.\n\n"
+        "Use /status to check the bot and /reset to remove a stuck request."
     )
     logger.info("Bot profile configured")
 
@@ -93,13 +96,30 @@ async def startup() -> None:
     await telegram_app.initialize()
     await telegram_app.start()
     if PUBLIC_URL:
-        await telegram_app.bot.set_webhook(
-            url=f"{PUBLIC_URL.rstrip('/')}{WEBHOOK_PATH}",
-            secret_token=WEBHOOK_SECRET,
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-        )
-        logger.info("Telegram webhook registered with public URL")
+        webhook_url = f"{PUBLIC_URL.rstrip('/')}{WEBHOOK_PATH}"
+        try:
+            current_webhook = await telegram_app.bot.get_webhook_info()
+            if current_webhook.url == webhook_url:
+                logger.info("Telegram webhook already registered")
+                return
+        except Exception:
+            logger.warning("Could not inspect current Telegram webhook; continuing")
+        for attempt in range(3):
+            try:
+                await telegram_app.bot.set_webhook(
+                    url=webhook_url,
+                    secret_token=WEBHOOK_SECRET,
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=True,
+                )
+                logger.info("Telegram webhook registered with public URL")
+                break
+            except RetryAfter as error:
+                if attempt == 2:
+                    raise
+                delay = max(int(error.retry_after), 1)
+                logger.warning("Telegram webhook rate limited; retrying in %ss", delay)
+                await asyncio.sleep(delay)
 
 
 @web.on_event("shutdown")
