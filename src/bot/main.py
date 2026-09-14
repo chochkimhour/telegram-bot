@@ -150,6 +150,11 @@ async def telegram_vercel_rewrite(request: Request) -> Response:
     return await process_webhook(request)
 
 
+@web.post("/{path:path}")
+async def telegram_vercel_fallback(path: str, request: Request) -> Response:
+    return await process_webhook(request)
+
+
 @web.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
