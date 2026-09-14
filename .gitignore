@@ -2,11 +2,14 @@
 .env
 .env.*
 !.env.example
+.env.local
+.env.production
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 .Python
 .venv/
 venv/
@@ -18,12 +21,17 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
 # Logs and local files
 *.log
 *.tmp
+*.swp
+*.swo
+*.bak
 
 # Editors and operating systems
 .vscode/

@@ -132,13 +132,22 @@ async def shutdown() -> None:
     await telegram_app.shutdown()
 
 
-@web.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request) -> Response:
+async def process_webhook(request: Request) -> Response:
     if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
         return Response(content="forbidden", status_code=403)
     update = Update.de_json(await request.json(), telegram_app.bot)
     await telegram_app.process_update(update)
     return Response(content="ok")
+
+
+@web.post(WEBHOOK_PATH)
+async def telegram_webhook(request: Request) -> Response:
+    return await process_webhook(request)
+
+
+@web.post("/api")
+async def telegram_vercel_rewrite(request: Request) -> Response:
+    return await process_webhook(request)
 
 
 @web.get("/health")
