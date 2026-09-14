@@ -42,10 +42,20 @@ async def configure_bot_profile(application: Application) -> None:
 def build_application() -> Application:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required")
-    application = Application.builder().token(BOT_TOKEN).post_init(configure_bot_profile).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(configure_bot_profile)
+        .connect_timeout(30)
+        .read_timeout(90)
+        .write_timeout(90)
+        .pool_timeout(30)
+        .build()
+    )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    message_filters = (filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND
+    application.add_handler(MessageHandler(message_filters, handle_message))
     application.add_error_handler(error_handler)
     return application
 
