@@ -96,6 +96,7 @@ web = FastAPI()
 @web.on_event("startup")
 async def startup() -> None:
     await telegram_app.initialize()
+    await configure_bot_profile(telegram_app)
     await telegram_app.start()
     if PUBLIC_URL:
         webhook_url = f"{PUBLIC_URL.rstrip('/')}{WEBHOOK_PATH}"
