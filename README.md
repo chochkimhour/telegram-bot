@@ -16,7 +16,7 @@ A simple Telegram bot that translates text and reads text from images using Goog
 - Choose `English`, `Khmer`, or `Both` for translation.
 - Send or forward an image and choose `Text` to extract readable text only.
 - Supports image captions and images sent as photos or files.
-- No database and no user data storage.
+- Uses Redis temporarily for pending text/images; data expires after 10 minutes or after processing.
 - Uses local polling or a FastAPI webhook on Vercel.
 
 ## Requirements
@@ -35,7 +35,7 @@ A simple Telegram bot that translates text and reads text from images using Goog
    pip install .
    ```
 
-2. Copy `.env.example` to `.env` and add your Telegram and Gemini keys.
+2. Copy `.env.example` to `.env` and add your Telegram, webhook, Gemini, and Redis settings.
 
 3. Start the server:
 
@@ -56,6 +56,8 @@ After `/start`, the menu has four buttons in a 2×2 layout:
 
 For image OCR, send or forward the image first, then press `📝 Text`. The bot returns plain extracted text without headings or explanations.
 
+Images are limited to 10 MB. Failed downloads receive a friendly error message and do not stop the bot.
+
 ## Deploy on Vercel
 
 1. Push this project to GitHub.
@@ -63,20 +65,24 @@ For image OCR, send or forward the image first, then press `📝 Text`. The bot 
 3. Add these environment variables in Vercel:
 
    - `BOT_TOKEN` = your Telegram bot token
+   - `WEBHOOK_SECRET` = a long random secret used in the webhook path
    - `GEMINI_API_KEY` = your Google Gemini API key
    - `GEMINI_MODEL` = `gemini-3.1-flash-lite`
    - `REDIS_URL` = your Redis connection URL for pending images/text
 
 4. Deploy the project. Vercel automatically detects `api/index.py` as a Python Function and provides the public URL used for the Telegram webhook.
 
-Vercel Functions are stateless. The send-then-select workflow requires temporary per-user storage for production image use; local polling is recommended for testing this workflow without a database.
+The webhook endpoint uses `/api/webhook/<WEBHOOK_SECRET>` and validates Telegram’s secret header. The Telegram bot token is never included in the public webhook path. Redis data expires after 10 minutes and is deleted after processing.
 
 ## Commands
 
 - `/start` — start the bot
 - `/help` — show instructions
+- `/clear` — remove pending text and image data
 
 Keep `.env` private and never commit API keys to GitHub.
+
+Never expose Telegram, Gemini, Redis, or webhook secrets. Rotate any secret that has been exposed.
 
 ## GitHub Actions checks
 

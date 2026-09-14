@@ -8,10 +8,13 @@ from fastapi import FastAPI, Request, Response
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-from src.bot.handlers import handle_message, help_command, start
+from src.bot.handlers import clear_command, handle_message, help_command, start
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "telegram-webhook")
+if os.getenv("VERCEL") and not os.getenv("WEBHOOK_SECRET"):
+    raise RuntimeError("WEBHOOK_SECRET environment variable is required on Vercel")
 PORT = int(os.getenv("PORT", "9999"))
 PUBLIC_URL = os.getenv("WEBHOOK_URL")
 if not PUBLIC_URL and os.getenv("VERCEL_URL"):
@@ -62,6 +65,7 @@ def build_application() -> Application:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("clear", clear_command))
     message_filters = (filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND
     application.add_handler(MessageHandler(message_filters, handle_message))
     application.add_error_handler(error_handler)
@@ -70,7 +74,7 @@ def build_application() -> Application:
 
 telegram_app = build_application()
 WEBHOOK_PREFIX = "/api" if os.getenv("VERCEL") else ""
-WEBHOOK_PATH = f"{WEBHOOK_PREFIX}/webhook/{BOT_TOKEN}"
+WEBHOOK_PATH = f"{WEBHOOK_PREFIX}/webhook/{WEBHOOK_SECRET}"
 web = FastAPI()
 
 
@@ -81,6 +85,7 @@ async def startup() -> None:
     if PUBLIC_URL:
         await telegram_app.bot.set_webhook(
             url=f"{PUBLIC_URL.rstrip('/')}{WEBHOOK_PATH}",
+            secret_token=WEBHOOK_SECRET,
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
         )
@@ -96,6 +101,8 @@ async def shutdown() -> None:
 
 @web.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request) -> Response:
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
+        return Response(content="forbidden", status_code=403)
     update = Update.de_json(await request.json(), telegram_app.bot)
     await telegram_app.process_update(update)
     return Response(content="ok")
@@ -104,6 +111,11 @@ async def telegram_webhook(request: Request) -> Response:
 @web.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@web.get("/")
+async def root() -> dict[str, str]:
+    return {"status": "ok", "service": "Telegram English-Khmer Translator"}
 
 
 def run() -> None:

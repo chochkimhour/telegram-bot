@@ -15,6 +15,9 @@ ENGLISH = "🇬🇧 English"
 KHMER = "🇰🇭 Khmer"
 BOTH = "🌐 Both"
 TEXT_ONLY = "📝 Text"
+IMAGE_SOURCE = "🖼 Image text"
+MESSAGE_SOURCE = "💬 Message text"
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
 
 
@@ -45,6 +48,15 @@ async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
     return data.get("text", ""), base64.b64decode(data["image"]) if data.get("image") else None
 
 
+async def delete_pending(chat_id: int) -> None:
+    if not redis_client:
+        return
+    try:
+        await asyncio.wait_for(redis_client.delete(f"pending:{chat_id}"), timeout=5)
+    except Exception as error:
+        logger.warning("Redis cleanup skipped: %s", error)
+
+
 def language_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
@@ -55,9 +67,22 @@ def language_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def source_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(IMAGE_SOURCE), KeyboardButton(MESSAGE_SOURCE)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 async def translate_text(text: str, target: str = "both", image_data: bytes | None = None) -> str:
     try:
-        logger.info("Translation requested: target=%s characters=%d", target, len(text))
+        logger.info(
+            "Translation requested: target=%s caption_characters=%d image_bytes=%d",
+            target,
+            len(text),
+            len(image_data) if image_data else 0,
+        )
 
         async def translate_to(language: str) -> str:
             api_key = os.getenv("GEMINI_API_KEY")
@@ -137,7 +162,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         "Send any text to receive both English and Khmer translations.\n\n"
         "Choose English, Khmer, or Both before sending text.\n\n"
-        "Commands:\n/start - Start the bot\n/help - Show this help message",
+        "Commands:\n/start - Start the bot\n/help - Show this help message\n/clear - Clear pending data",
+        reply_markup=language_keyboard(),
+    )
+
+
+async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("pending_text", None)
+    context.user_data.pop("pending_image", None)
+    context.user_data.pop("pending_source", None)
+    if redis_client:
+        try:
+            await asyncio.wait_for(
+                redis_client.delete(f"pending:{update.effective_chat.id}"), timeout=5
+            )
+        except Exception as error:
+            logger.warning("Redis clear skipped: %s", error)
+    await update.message.reply_text(
+        "🧹 Pending text and image data cleared.",
         reply_markup=language_keyboard(),
     )
 
@@ -153,6 +195,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 try:
                     photo_file = await update.message.photo[-1].get_file()
                     image_data = bytes(await photo_file.download_as_bytearray())
+                    if len(image_data) > MAX_IMAGE_BYTES:
+                        raise ValueError("image is too large")
                     break
                 except Exception:
                     if attempt == 1:
@@ -163,6 +207,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 try:
                     image_file = await update.message.document.get_file()
                     image_data = bytes(await image_file.download_as_bytearray())
+                    if len(image_data) > MAX_IMAGE_BYTES:
+                        raise ValueError("image is too large")
                     break
                 except Exception:
                     if attempt == 1:
@@ -183,8 +229,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.info("Translation option selected: target=%s", target)
         pending_text = context.user_data.pop("pending_text", "")
         pending_image = context.user_data.pop("pending_image", None)
+        pending_source = context.user_data.pop("pending_source", "both")
         if not pending_text and not pending_image:
             pending_text, pending_image = await load_pending(update.effective_chat.id)
+        else:
+            await delete_pending(update.effective_chat.id)
+        if pending_source == "image":
+            pending_text = ""
+        elif pending_source == "message":
+            pending_image = None
         if pending_text or pending_image:
             if target == "text" and not pending_image:
                 await update.message.reply_text(
@@ -203,15 +256,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=language_keyboard(),
         )
         return
-    context.user_data["pending_text"] = text.strip()
-    context.user_data["pending_image"] = image_data
-    await save_pending(update.effective_chat.id, text.strip(), image_data)
+    if text in (IMAGE_SOURCE, MESSAGE_SOURCE):
+        context.user_data["pending_source"] = "image" if text == IMAGE_SOURCE else "message"
+        await update.message.reply_text(
+            f"✅ {text} selected.\n\nNow choose English, Khmer, or Both:",
+            reply_markup=language_keyboard(),
+        )
+        return
+    old_text = context.user_data.get("pending_text", "")
+    old_image = context.user_data.get("pending_image")
+    had_pending = bool(old_text or old_image)
+    combined_text = "\n".join(part for part in (old_text, text.strip()) if part)
+    combined_image = image_data or old_image
+    context.user_data["pending_text"] = combined_text
+    context.user_data["pending_image"] = combined_image
+    await save_pending(update.effective_chat.id, combined_text, combined_image)
     logger.info(
-        "Content received for translation: characters=%d image=%s image_bytes=%d",
-        len(text.strip()),
-        bool(image_data),
-        len(image_data) if image_data else 0,
+        "Content received for translation: caption_characters=%d image=%s image_bytes=%d",
+        len(combined_text),
+        bool(combined_image),
+        len(combined_image) if combined_image else 0,
     )
+    if had_pending:
+        return
+    if combined_text and combined_image:
+        await update.message.reply_text(
+            "📦 This message contains an image and separate text.\n\nWhat should I process?",
+            reply_markup=source_keyboard(),
+        )
+        return
     await update.message.reply_text(
         "📩 Text received.\n\nPlease choose a language below to translate it:",
         reply_markup=language_keyboard(),
