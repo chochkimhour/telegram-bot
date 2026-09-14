@@ -5,10 +5,10 @@ import asyncio
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-from src.bot.handlers import clear_command, handle_message, help_command, start
+from src.bot.handlers import clear_command, handle_message, help_command, start, status_command
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -40,6 +40,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def configure_bot_profile(application: Application) -> None:
+    await application.bot.set_my_commands(
+        [
+            BotCommand("start", "Start the translator"),
+            BotCommand("help", "Show instructions"),
+            BotCommand("reset", "Clear stuck pending data"),
+            BotCommand("status", "Check pending request"),
+        ]
+    )
     await application.bot.set_my_short_description(
         "Translate any language into English, Khmer, or both."
     )
@@ -66,7 +74,8 @@ def build_application() -> Application:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("clear", clear_command))
+    application.add_handler(CommandHandler("reset", clear_command))
+    application.add_handler(CommandHandler("status", status_command))
     message_filters = (filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND
     application.add_handler(MessageHandler(message_filters, handle_message))
     application.add_error_handler(error_handler)

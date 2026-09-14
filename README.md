@@ -16,6 +16,7 @@ A simple Telegram bot that translates text and reads text from images using Goog
 - Choose `English`, `Khmer`, or `Both` for translation.
 - Send or forward an image and choose `Text` to extract readable text only.
 - Supports image captions and images sent as photos or files.
+- Images are acknowledged immediately, and slow requests are removed after 60 seconds with a user message.
 - Uses Redis temporarily for pending text/images; data expires after 10 minutes or after processing.
 - Uses local polling or a FastAPI webhook on Vercel.
 
@@ -78,7 +79,10 @@ The webhook endpoint uses `/api/webhook/<WEBHOOK_SECRET>` and validates Telegram
 
 - `/start` — start the bot
 - `/help` — show instructions
-- `/clear` — remove pending text and image data
+- `/reset` — remove pending text, image, and source-selection data if a request is stuck
+- `/status` — check that the bot is online and whether a request is pending
+
+Telegram suggests these commands when you type /. Use `/reset` if an image or translation appears stuck.
 
 Keep `.env` private and never commit API keys to GitHub.
 

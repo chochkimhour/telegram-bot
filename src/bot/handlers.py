@@ -91,14 +91,19 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                 raise RuntimeError("GEMINI_API_KEY is not configured")
             prompt = (
                 (
-                    "Extract only the readable text from the image. Do not translate, summarize, label, or explain. "
-                    "Ignore QR codes, logos, stamps, signatures, decorative marks, and page numbers. "
-                    "Preserve the original language, paragraph order, punctuation, and useful line breaks. "
-                    "Return plain text only."
+                    "Read the image as an OCR document. Extract only text that is visibly readable. "
+                    "Read from the top of the page to the bottom. Within each row, read from left to right. "
+                    "For multi-column layouts, finish the left column from top to bottom before the next column. "
+                    "Keep headings, paragraphs, lists, dates, numbers, and meaningful line breaks in their visual order. "
+                    "Do not guess unclear characters; omit unreadable fragments rather than inventing text. "
+                    "Do not translate, summarize, label, or explain. Ignore QR codes, logos, stamps, signatures, "
+                    "decorative marks, watermarks, and isolated page numbers. Return plain text only."
                     if language == "text"
                     else f"Translate the following text into {language}. Detect the source language automatically. "
-                    "If an image is included, also read all visible text in the image. "
-                    "Preserve meaning, names, numbers, emojis, and line breaks. Return only the translation."
+                    "If an image is included, first read visible text from top to bottom and left to right; "
+                    "for columns, finish the left column before the next column. "
+                    "Preserve meaning, names, numbers, emojis, paragraph order, and useful line breaks. "
+                    "Do not invent missing or unreadable content. Return only the translation."
                 )
                 + f"\n\nCaption or message text:\n{text or '(none; read the image)'}"
             )
@@ -107,7 +112,13 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                 parts.append({"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image_data).decode("ascii")}})
             payload = {
                 "systemInstruction": {
-                    "parts": [{"text": "You are a precise professional translator. Return only translated text."}]
+                    "parts": [{
+                        "text": (
+                            "You are a precise document OCR and translation assistant. "
+                            "Use only visible source content. Never hallucinate missing words. "
+                            "Return only the requested plain text or translation, without commentary."
+                        )
+                    }]
                 },
                 "contents": [{"parts": parts}],
                 "generationConfig": {"temperature": 0.1},
@@ -162,7 +173,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         "Send any text to receive both English and Khmer translations.\n\n"
         "Choose English, Khmer, or Both before sending text.\n\n"
-        "Commands:\n/start - Start the bot\n/help - Show this help message\n/clear - Clear pending data",
+        "Commands:\n"
+        "/start - Start the translator\n"
+        "/help - Show these instructions\n"
+        "/reset - Clear stuck pending data\n"
+        "/status - Check pending request",
         reply_markup=language_keyboard(),
     )
 
@@ -180,6 +195,34 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             logger.warning("Redis clear skipped: %s", error)
     await update.message.reply_text(
         "🧹 Pending text and image data cleared.",
+        reply_markup=language_keyboard(),
+    )
+
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    pending_text = context.user_data.get("pending_text", "")
+    pending_image = context.user_data.get("pending_image")
+    has_pending = bool(pending_text or pending_image)
+    if not has_pending and redis_client:
+        try:
+            has_pending = bool(
+                await asyncio.wait_for(
+                    redis_client.exists(f"pending:{update.effective_chat.id}"), timeout=5
+                )
+            )
+        except Exception as error:
+            logger.warning("Redis status check skipped: %s", error)
+    if has_pending:
+        await update.message.reply_text(
+            "✅ Bot is online and working.\n\n"
+            "⏳ You have a pending request. Choose English, Khmer, Both, or Text to continue.\n\n"
+            "Use /reset if it is stuck.",
+            reply_markup=language_keyboard(),
+        )
+        return
+    await update.message.reply_text(
+        "✅ Bot is online and working.\n\n"
+        "✅ No pending request. Send or forward text or an image to begin.",
         reply_markup=language_keyboard(),
     )
 
