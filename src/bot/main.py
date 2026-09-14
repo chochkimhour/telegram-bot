@@ -20,6 +20,8 @@ PORT = int(os.getenv("PORT", "9999"))
 PUBLIC_URL = os.getenv("WEBHOOK_URL")
 if not PUBLIC_URL and os.getenv("VERCEL_URL"):
     PUBLIC_URL = f"https://{os.getenv('VERCEL_URL')}"
+if not PUBLIC_URL and os.getenv("VERCEL_PROJECT_PRODUCTION_URL"):
+    PUBLIC_URL = f"https://{os.getenv('VERCEL_PROJECT_PRODUCTION_URL')}"
 
 logging.basicConfig(format="[%(levelname)s] %(asctime)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
