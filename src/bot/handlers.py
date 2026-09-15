@@ -228,6 +228,9 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                         await asyncio.sleep(delay)
 
         if target == "text":
+            if not image_data:
+                logger.info("Text extraction completed from document/message: characters=%d", len(text))
+                return clean_text(text)
             extracted = await translate_to("text")
             logger.info("Image text extracted: characters=%d", len(extracted))
             return extracted
@@ -508,6 +511,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     if document_received:
         filename = update.message.document.file_name or ""
+        caption_text = text
         logger.info("Document update received: filename=%s", filename or "(unnamed)")
         try:
             if update.message.document.file_size and update.message.document.file_size > MAX_DOCUMENT_BYTES:
@@ -522,16 +526,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     timeout=25,
                 )
             )
-            text = await asyncio.wait_for(
+            extracted_text = await asyncio.wait_for(
                 asyncio.to_thread(extract_document_text, filename, document_data),
                 timeout=25,
             )
-            if not text:
+            if not extracted_text:
                 await update.message.reply_text(
                     "⚠️ I could not find readable text in that file.",
                     reply_markup=language_keyboard(),
                 )
                 return
+            text = "\n\n".join(part for part in (caption_text, extracted_text) if part)
             logger.info(
                 "Document text extracted: filename=%s characters=%d",
                 filename or "(unnamed)",
@@ -671,9 +676,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         elif pending_source == "message":
             pending_image = None
         if pending_text or pending_image:
-            if target == "text" and not pending_image:
+            if target == "text" and not pending_image and not pending_text:
                 await update.message.reply_text(
-                    "📝 The Text option works with an image. Please send or forward an image first.",
+                    "📝 Please send or forward an image or document first.",
                     reply_markup=language_keyboard(),
                 )
                 return
