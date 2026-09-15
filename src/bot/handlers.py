@@ -457,7 +457,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     text = clean_text(update.message.text or update.message.caption or "")
     image_data = None
-    document_received = bool(update.message.document and not image_received)
     image_received = bool(
         update.message.photo
         or (
@@ -465,6 +464,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             and (update.message.document.mime_type or "").startswith("image/")
         )
     )
+    document_received = bool(update.message.document and not image_received)
     if image_received:
         logger.info(
             "Image update received: photo=%s document=%s caption_characters=%d",
