@@ -89,7 +89,9 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("reset", clear_command))
     application.add_handler(CommandHandler("status", status_command))
-    message_filters = (filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND
+    message_filters = (
+        filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL
+    ) & ~filters.COMMAND
     application.add_handler(MessageHandler(message_filters, handle_message))
     application.add_error_handler(error_handler)
     return application

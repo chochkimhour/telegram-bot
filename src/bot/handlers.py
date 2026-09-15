@@ -10,6 +10,9 @@ from io import BytesIO
 import httpx
 import redis.asyncio as redis
 from gtts import gTTS
+from docx import Document
+from openpyxl import load_workbook
+from pypdf import PdfReader
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -17,11 +20,14 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 ENGLISH = "🇬🇧 English"
 KHMER = "🇰🇭 Khmer"
-TEXT_ONLY = "📝 Text"
-VOICE = "🔊 Voice"
+BOTH = "🌐 EN + KM"
+TEXT_ONLY = "📝 Extract Text"
+VOICE = "🔊 Text to Voice"
+VOICE_TO_TEXT = "🎙️ Voice to Text"
 IMAGE_SOURCE = "🖼 Image text"
 MESSAGE_SOURCE = "💬 Message text"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
 active_tasks: dict[int, asyncio.Task] = {}
 
@@ -38,6 +44,35 @@ def clean_text(value: str) -> str:
         if line and line not in (fence, fence + "text", fence + "plaintext"):
             cleaned_lines.append(line)
     return "\n".join(cleaned_lines).strip()
+
+
+def extract_document_text(filename: str, data: bytes) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".txt") or name.endswith(".csv") or name.endswith(".tsv"):
+        return clean_text(data.decode("utf-8-sig", errors="replace"))
+    if name.endswith(".pdf"):
+        reader = PdfReader(BytesIO(data))
+        pages = [page.extract_text() or "" for page in reader.pages]
+        return clean_text("\n\n".join(pages))
+    if name.endswith(".docx"):
+        document = Document(BytesIO(data))
+        parts = [paragraph.text for paragraph in document.paragraphs]
+        for table in document.tables:
+            for row in table.rows:
+                parts.append(" | ".join(cell.text for cell in row.cells))
+        return clean_text("\n".join(parts))
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
+        rows = []
+        for sheet in workbook.worksheets:
+            rows.append(f"[{sheet.title}]")
+            for row in sheet.iter_rows(values_only=True):
+                values = [str(value).strip() for value in row if value is not None]
+                if values:
+                    rows.append(" | ".join(values))
+        workbook.close()
+        return clean_text("\n".join(rows))
+    raise ValueError("unsupported document type")
 
 
 async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> None:
@@ -93,7 +128,8 @@ def language_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(ENGLISH), KeyboardButton(KHMER)],
-            [KeyboardButton(TEXT_ONLY), KeyboardButton(VOICE)],
+            [KeyboardButton(BOTH), KeyboardButton(TEXT_ONLY)],
+            [KeyboardButton(VOICE), KeyboardButton(VOICE_TO_TEXT)],
         ],
         resize_keyboard=True,
     )
@@ -218,7 +254,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "🇬🇧 English — translate into English\n"
         "🇰🇭 Khmer — translate into Khmer\n"
         "📝 Text — extract clean text from an image\n"
-        "🔊 Voice — turn your text into audio\n\n"
+        "🔊 Voice — turn your text into audio\n"
+        "🎙️ Voice to Text — convert speech into copyable text\n\n"
         "Choose a button below to get started.",
         reply_markup=language_keyboard(),
     )
@@ -226,7 +263,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Send or forward text or an image, then choose English, Khmer, Text, or Voice.\n\n"
+        "Send or forward text or an image, then choose a button below.\n\n"
         "Commands:\n"
         "/start - Start the translator\n"
         "/help - Show these instructions\n"
@@ -276,7 +313,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if has_pending:
         await update.message.reply_text(
             "✅ Bot is online and working.\n\n"
-                "⏳ You have a pending request. Choose English, Khmer, Text, or Voice to continue.\n\n"
+                "⏳ You have a pending request. Choose a button below to continue.\n\n"
             "Use /reset if it is stuck.",
             reply_markup=language_keyboard(),
         )
@@ -320,6 +357,34 @@ async def send_voice(text: str, language: str = "en") -> BytesIO:
     return audio
 
 
+async def transcribe_audio(audio_data: bytes, mime_type: str) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": "Transcribe only the spoken words. Detect the language automatically. Return plain text only."}]
+        },
+        "contents": [{"parts": [
+            {"text": "Transcribe this audio accurately. Preserve names, numbers, and the original language."},
+            {"inline_data": {"mime_type": mime_type, "data": base64.b64encode(audio_data).decode("ascii")}},
+        ]}],
+        "generationConfig": {"temperature": 0.0},
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            url,
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json=payload,
+        )
+        response.raise_for_status()
+        result = clean_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+        logger.info("Voice transcription succeeded: characters=%d", len(result))
+        return result
+
+
 async def download_image(message) -> bytes:
     media = message.photo[-1] if message.photo else message.document
     for attempt in range(2):
@@ -342,6 +407,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     text = clean_text(update.message.text or update.message.caption or "")
     image_data = None
+    document_received = bool(update.message.document and not image_received)
     image_received = bool(
         update.message.photo
         or (
@@ -390,7 +456,99 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=language_keyboard(),
         )
         return
+    if document_received:
+        filename = update.message.document.file_name or ""
+        logger.info("Document update received: filename=%s", filename or "(unnamed)")
+        try:
+            if update.message.document.file_size and update.message.document.file_size > MAX_DOCUMENT_BYTES:
+                raise ValueError("document is too large")
+            document_file = await asyncio.wait_for(
+                update.message.document.get_file(),
+                timeout=15,
+            )
+            document_data = bytes(
+                await asyncio.wait_for(
+                    document_file.download_as_bytearray(),
+                    timeout=25,
+                )
+            )
+            text = await asyncio.wait_for(
+                asyncio.to_thread(extract_document_text, filename, document_data),
+                timeout=25,
+            )
+            if not text:
+                await update.message.reply_text(
+                    "⚠️ I could not find readable text in that file.",
+                    reply_markup=language_keyboard(),
+                )
+                return
+            logger.info(
+                "Document text extracted: filename=%s characters=%d",
+                filename or "(unnamed)",
+                len(text),
+            )
+        except asyncio.TimeoutError:
+            logger.error("Document processing timed out: filename=%s", filename or "(unnamed)")
+            await update.message.reply_text(
+                "⏱️ That file took too long to read and was removed. Please send a smaller file.",
+                reply_markup=language_keyboard(),
+            )
+            return
+        except ValueError as error:
+            logger.warning("Document rejected: filename=%s reason=%s", filename or "(unnamed)", error)
+            await update.message.reply_text(
+                "⚠️ This file is too large or unsupported. Send TXT, PDF, DOCX, XLSX, or XLSM files up to 10 MB.",
+                reply_markup=language_keyboard(),
+            )
+            return
+        except Exception:
+            logger.exception("Could not read document: filename=%s", filename or "(unnamed)")
+            await update.message.reply_text(
+                "⚠️ I could not read that file. Please send a TXT, PDF, DOCX, XLSX, or XLSM file.",
+                reply_markup=language_keyboard(),
+            )
+            return
+    if update.message.voice or update.message.audio:
+        media = update.message.voice or update.message.audio
+        try:
+            audio_file = await asyncio.wait_for(media.get_file(), timeout=15)
+            audio_data = bytes(
+                await asyncio.wait_for(audio_file.download_as_bytearray(), timeout=25)
+            )
+            mime_type = (
+                "audio/ogg"
+                if update.message.voice
+                else (media.mime_type or "audio/mpeg")
+            )
+            await update.message.chat.send_action(ChatAction.TYPING)
+            result = await asyncio.wait_for(
+                transcribe_audio(audio_data, mime_type),
+                timeout=45,
+            )
+            await update.message.reply_text(
+                result or "⚠️ No speech was detected.",
+                reply_markup=language_keyboard(),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Voice transcription timed out")
+            await update.message.reply_text(
+                "⏱️ Voice transcription took too long. Please send a shorter recording.",
+                reply_markup=language_keyboard(),
+            )
+        except Exception:
+            logger.exception("Voice transcription failed")
+            await update.message.reply_text(
+                "⚠️ I could not convert that voice message to text. Please try again.",
+                reply_markup=language_keyboard(),
+            )
+        return
     if not text and not image_data:
+        return
+    if text == VOICE_TO_TEXT:
+        await update.message.reply_text(
+            "🎙️ Send a Telegram voice message or audio file, and I will convert it to copyable text.",
+            reply_markup=language_keyboard(),
+        )
         return
     if text == VOICE:
         pending_text = context.user_data.pop("pending_text", "")
@@ -433,8 +591,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=language_keyboard(),
             )
         return
-    if text in (ENGLISH, KHMER, TEXT_ONLY):
-        target = {ENGLISH: "en", KHMER: "km", TEXT_ONLY: "text"}[text]
+    if text in (ENGLISH, KHMER, BOTH, TEXT_ONLY):
+        target = {ENGLISH: "en", KHMER: "km", BOTH: "both", TEXT_ONLY: "text"}[text]
         context.user_data["target"] = target
         logger.info("Translation option selected: target=%s", target)
         pending_text = context.user_data.pop("pending_text", "")
@@ -494,7 +652,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(result, reply_markup=language_keyboard())
             return
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nSend or forward text or an image, then choose English, Khmer, Text, or Voice.",
+            f"✅ {text} selected.\n\nSend or forward text or an image, then choose a button below.",
             reply_markup=language_keyboard(),
         )
         return

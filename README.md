@@ -13,9 +13,11 @@ A simple Telegram bot that translates text and reads text from images using Goog
 ## What it does
 
 - Send or forward text in any language.
-- Choose `English` or `Khmer` for translation.
-- Send or paste text and choose `Voice` to receive spoken audio.
-- Send or forward an image and choose `Text` to extract readable text only.
+- Choose English, Khmer, or `EN + KM` for translation.
+- Send or paste text and choose `Text to Voice` to receive spoken audio.
+- Send or forward an image and choose `Extract Text` to get clean OCR text.
+- Send a voice message or audio file to receive clean transcribed text.
+- Send TXT, PDF, DOCX, XLSX, or XLSM files to extract their text for translation or voice.
 - Supports image captions and images sent as photos or files.
 - Images are acknowledged immediately, and slow requests are removed after 60 seconds with a user message.
 - Uses Redis temporarily for pending text/images; data expires after 10 minutes or after processing.
@@ -49,16 +51,19 @@ When `WEBHOOK_URL` is empty, the bot automatically uses local polling, so you ca
 
 The default local port is `9999`.
 
-After `/start`, the menu has four buttons in a 2×2 layout:
+After `/start`, the menu has six buttons in a 3×2 layout:
 
 ```text
 🇬🇧 English    🇰🇭 Khmer
-📝 Text        🔊 Voice
+🌐 EN + KM           📝 Extract Text
+🔊 Text to Voice     🎙️ Voice to Text
 ```
 
-For image OCR, send or forward the image first, then press `📝 Text`. The bot returns plain extracted text without headings or explanations.
+For image OCR, send or forward the image first, then press `📝 Extract Text`. The bot returns plain extracted text without headings or explanations.
 
-For voice, send or paste text, then press `🔊 Voice`. Khmer text is spoken in Khmer; other text is spoken in English. Keep the text reasonably short for faster audio generation.
+For text-to-voice, send or paste text, then press `🔊 Text to Voice`. Khmer text is spoken in Khmer; other text is spoken in English. Keep the text reasonably short for faster audio generation.
+
+For voice-to-text, send a Telegram voice message or audio file. The bot returns clean, copyable transcription text.
 
 Images are limited to 10 MB. Failed downloads receive a friendly error message and do not stop the bot.
 
