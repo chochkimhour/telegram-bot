@@ -372,15 +372,30 @@ async def transcribe_audio(audio_data: bytes, mime_type: str) -> str:
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            url,
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json=payload,
-        )
-        response.raise_for_status()
-        result = clean_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
-        logger.info("Voice transcription succeeded: characters=%d", len(result))
-        return result
+        for attempt in range(3):
+            try:
+                logger.info("Voice transcription request started: attempt=%d", attempt + 1)
+                response = await client.post(
+                    url,
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = clean_text(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+                logger.info("Voice transcription succeeded: characters=%d", len(result))
+                return result
+            except httpx.HTTPStatusError as error:
+                status = error.response.status_code
+                if status not in (429, 500, 503, 504) or attempt == 2:
+                    raise
+                delay = 2 ** attempt
+                logger.warning(
+                    "Gemini voice transcription returned %s; retrying in %ss",
+                    status,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+    raise RuntimeError("voice transcription failed after retries")
 
 
 async def download_image(message) -> bytes:
