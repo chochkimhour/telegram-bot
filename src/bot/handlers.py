@@ -591,8 +591,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             await update.message.chat.send_action(ChatAction.UPLOAD_VOICE)
             audio = await asyncio.wait_for(send_voice(pending_text, language), timeout=45)
-            await update.message.reply_voice(
-                voice=audio,
+            await update.message.reply_audio(
+                audio=audio,
                 reply_markup=language_keyboard(),
             )
         except asyncio.TimeoutError:
