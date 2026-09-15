@@ -5,6 +5,8 @@ import asyncio
 import contextlib
 import json
 import time
+import subprocess
+import tempfile
 from io import BytesIO
 
 import httpx
@@ -175,7 +177,7 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
 
         async def translate_to(language: str) -> str:
             api_key = os.getenv("GEMINI_API_KEY")
-            model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+            model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
             if not api_key:
                 raise RuntimeError("GEMINI_API_KEY is not configured")
             prompt = (
@@ -377,9 +379,44 @@ async def send_voice(text: str, language: str = "en") -> BytesIO:
     return audio
 
 
+async def convert_to_telegram_voice(audio: BytesIO) -> BytesIO:
+    def convert() -> BytesIO:
+        import imageio_ffmpeg
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = os.path.join(folder, "source.mp3")
+            target = os.path.join(folder, "voice.ogg")
+            with open(source, "wb") as stream:
+                stream.write(audio.getvalue())
+            subprocess.run(
+                [
+                    imageio_ffmpeg.get_ffmpeg_exe(),
+                    "-y",
+                    "-i",
+                    source,
+                    "-c:a",
+                    "libopus",
+                    "-b:a",
+                    "48k",
+                    "-vn",
+                    target,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+            with open(target, "rb") as stream:
+                result = BytesIO(stream.read())
+            result.name = "voice.ogg"
+            return result
+
+    return await asyncio.to_thread(convert)
+
+
 async def transcribe_audio(audio_data: bytes, mime_type: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     payload = {
@@ -620,7 +657,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             for chunk in voice_chunks:
                 audio = await asyncio.wait_for(send_voice(chunk, language), timeout=45)
-                await update.message.reply_audio(audio=audio, reply_markup=language_keyboard())
+                try:
+                    voice = await asyncio.wait_for(
+                        convert_to_telegram_voice(audio),
+                        timeout=35,
+                    )
+                    await update.message.reply_voice(
+                        voice=voice,
+                        reply_markup=language_keyboard(),
+                    )
+                except Exception:
+                    logger.exception("OGG/Opus voice conversion failed")
+                    await update.message.reply_text(
+                        "⚠️ I could not create a Telegram voice message. Please try shorter text.",
+                        reply_markup=language_keyboard(),
+                    )
         except asyncio.TimeoutError:
             logger.warning(
                 "Voice generation timed out: language=%s characters=%d",

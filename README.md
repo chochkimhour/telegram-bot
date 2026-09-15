@@ -75,7 +75,7 @@ Images are limited to 10 MB. Failed downloads receive a friendly error message a
    - `BOT_TOKEN` = your Telegram bot token
    - `WEBHOOK_SECRET` = a long random secret used in the webhook path
    - `GEMINI_API_KEY` = your Google Gemini API key
-   - `GEMINI_MODEL` = `gemini-3.1-flash-lite`
+   - `GEMINI_MODEL` = `gemini-3.6-flash`
    - `REDIS_URL` = your Redis connection URL for pending images/text
 
 4. Deploy the project. Vercel automatically detects `api/index.py` as a Python Function and provides the public URL used for the Telegram webhook.
@@ -99,7 +99,7 @@ Never expose Telegram, Gemini, Redis, or webhook secrets. Rotate any secret that
 
 The workflow in `.github/workflows/ci-cd.yml` installs the project and compiles the Python code on every pull request and push. Vercel deploys automatically when the GitHub repository is connected to a Vercel project.
 
-The bot uses Gemini 3.1 Flash-Lite to automatically detect the source language and translate into English and Khmer. Google describes this model as suitable for fast, high-volume translation. See the [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite).
+The bot uses Gemini 3.6 Flash to automatically detect the source language, read images/documents/audio, and translate into English and Khmer. See the [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash).
 
 ## License
 
