@@ -188,6 +188,20 @@ async def telegram_vercel_fallback(path: str, request: Request) -> Response:
 
 @web.get("/health")
 async def health() -> dict[str, str]:
+    if IS_VERCEL and PUBLIC_URL:
+        webhook_url = f"{PUBLIC_URL.rstrip('/')}{WEBHOOK_PATH}"
+        try:
+            webhook_info = await telegram_app.bot.get_webhook_info()
+            if webhook_info.url != webhook_url:
+                await telegram_app.bot.set_webhook(
+                    url=webhook_url,
+                    secret_token=WEBHOOK_SECRET,
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=False,
+                )
+                logger.info("Webhook repaired automatically from health check")
+        except Exception:
+            logger.exception("Automatic webhook repair failed")
     return {"status": "ok"}
 
 
