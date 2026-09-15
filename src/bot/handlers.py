@@ -213,7 +213,13 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👋 Hello! Send or forward text or an image, then choose English, Khmer, Text, or Voice.",
+        "👋 Welcome to Translate!\n\n"
+        "Send or forward text, or upload an image, then choose an option:\n\n"
+        "🇬🇧 English — translate into English\n"
+        "🇰🇭 Khmer — translate into Khmer\n"
+        "📝 Text — extract clean text from an image\n"
+        "🔊 Voice — turn your text into audio\n\n"
+        "Choose a button below to get started.",
         reply_markup=language_keyboard(),
     )
 
@@ -344,12 +350,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     )
     if image_received:
-        # Acknowledge immediately so the user is not left waiting while Telegram
-        # downloads the file and Gemini processes it.
-        await update.message.reply_text(
-            "📷 Image received. Preparing it now…\n\nChoose a button when processing is ready.",
-            reply_markup=language_keyboard(),
+        logger.info(
+            "Image update received: photo=%s document=%s caption_characters=%d",
+            bool(update.message.photo),
+            bool(update.message.document),
+            len(text),
         )
+        try:
+            # Acknowledge immediately, but do not stop image processing if this
+            # Telegram response temporarily fails.
+            await asyncio.wait_for(
+                update.message.reply_text(
+                    "📷 Image received. Preparing it now…\n\nChoose a button when processing is ready.",
+                    reply_markup=language_keyboard(),
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.exception("Could not send image acknowledgement; continuing")
     try:
         if image_received:
             image_data = await asyncio.wait_for(
