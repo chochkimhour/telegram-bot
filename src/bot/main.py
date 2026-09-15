@@ -14,7 +14,7 @@ from src.bot.handlers import clear_command, handle_message, help_command, start,
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "telegram-webhook")
-if os.getenv("VERCEL") and not os.getenv("WEBHOOK_SECRET"):
+if (os.getenv("VERCEL") or os.getenv("WEBHOOK_URL")) and not os.getenv("WEBHOOK_SECRET"):
     raise RuntimeError("WEBHOOK_SECRET environment variable is required on Vercel")
 PORT = int(os.getenv("PORT", "9999"))
 PUBLIC_URL = os.getenv("WEBHOOK_URL")
@@ -63,9 +63,10 @@ async def configure_bot_profile(application: Application) -> None:
         "Translate text, read images, and create English or Khmer voice messages."
     )
     await application.bot.set_my_description(
-        "📖 Send or forward text in any language and choose English or Khmer.\n\n"
-        "📝 Send an image and choose Text to extract clean, copyable text from it.\n\n"
-        "🔊 Send or paste text and choose Voice to receive audio.\n\n"
+        "📖 Send or forward text in any language and choose EN + KM.\n\n"
+        "📝 Send an image or document and choose Extract Text.\n\n"
+        "🔊 Send or paste text and choose Text to Voice.\n\n"
+        "🎙️ Select Voice to Text before sending a voice message.\n\n"
         "Use /status to check the bot and /reset to remove a stuck request."
     )
     logger.info("Bot profile configured")

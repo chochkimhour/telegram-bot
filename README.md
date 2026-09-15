@@ -13,7 +13,7 @@ A simple Telegram bot that translates text and reads text from images using Goog
 ## What it does
 
 - Send or forward text in any language.
-- Choose English, Khmer, or `EN + KM` for translation.
+- Choose `EN + KM` to receive English and Khmer together.
 - Send or paste text and choose `Text to Voice` to receive spoken audio.
 - Send or forward an image and choose `Extract Text` to get clean OCR text.
 - Send a voice message or audio file to receive clean transcribed text.
@@ -51,10 +51,9 @@ When `WEBHOOK_URL` is empty, the bot automatically uses local polling, so you ca
 
 The default local port is `9999`.
 
-After `/start`, the menu has six buttons in a 3×2 layout:
+After `/start`, the menu has four buttons in a 2×2 layout:
 
 ```text
-🇬🇧 English    🇰🇭 Khmer
 🌐 EN + KM           📝 Extract Text
 🔊 Text to Voice     🎙️ Voice to Text
 ```

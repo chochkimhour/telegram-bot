@@ -127,7 +127,6 @@ async def delete_pending(chat_id: int) -> None:
 def language_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(ENGLISH), KeyboardButton(KHMER)],
             [KeyboardButton(BOTH), KeyboardButton(TEXT_ONLY)],
             [KeyboardButton(VOICE), KeyboardButton(VOICE_TO_TEXT)],
         ],
@@ -251,10 +250,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👋 Welcome to Translate!\n\n"
         "Send or forward text, or upload an image, then choose an option:\n\n"
-        "🇬🇧 English — translate into English\n"
-        "🇰🇭 Khmer — translate into Khmer\n"
-        "📝 Text — extract clean text from an image\n"
-        "🔊 Voice — turn your text into audio\n"
+        "🌐 EN + KM — translate into both languages\n"
+        "📝 Extract Text — read clean text from an image or document\n"
+        "🔊 Text to Voice — turn text into audio\n"
         "🎙️ Voice to Text — convert speech into copyable text\n\n"
         "Choose a button below to get started.",
         reply_markup=language_keyboard(),
@@ -509,6 +507,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             return
     if update.message.voice or update.message.audio:
+        if context.user_data.get("mode") != "voice_to_text":
+            await update.message.reply_text(
+                "🎙️ Select Voice to Text first, then send a voice message or audio file.",
+                reply_markup=language_keyboard(),
+            )
+            return
+        context.user_data.pop("mode", None)
         media = update.message.voice or update.message.audio
         try:
             audio_file = await asyncio.wait_for(media.get_file(), timeout=15)
@@ -542,13 +547,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=language_keyboard(),
             )
         return
-    if not text and not image_data:
-        return
     if text == VOICE_TO_TEXT:
+        context.user_data["mode"] = "voice_to_text"
         await update.message.reply_text(
-            "🎙️ Send a Telegram voice message or audio file, and I will convert it to copyable text.",
+            "🎙️ Voice to Text selected.\n\nNow send a voice message or audio file.",
             reply_markup=language_keyboard(),
         )
+        return
+    if not text and not image_data:
         return
     if text == VOICE:
         pending_text = context.user_data.pop("pending_text", "")
@@ -591,8 +597,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=language_keyboard(),
             )
         return
-    if text in (ENGLISH, KHMER, BOTH, TEXT_ONLY):
-        target = {ENGLISH: "en", KHMER: "km", BOTH: "both", TEXT_ONLY: "text"}[text]
+    if text in (BOTH, TEXT_ONLY):
+        target = {BOTH: "both", TEXT_ONLY: "text"}[text]
         context.user_data["target"] = target
         logger.info("Translation option selected: target=%s", target)
         pending_text = context.user_data.pop("pending_text", "")
@@ -659,7 +665,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if text in (IMAGE_SOURCE, MESSAGE_SOURCE):
         context.user_data["pending_source"] = "image" if text == IMAGE_SOURCE else "message"
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nNow choose English or Khmer:",
+            f"✅ {text} selected.\n\nNow choose EN + KM:",
             reply_markup=language_keyboard(),
         )
         return
@@ -690,6 +696,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Keep the keyboard visible without sending a duplicate "Text received" prompt.
         return
     await update.message.reply_text(
-        "📩 Text received.\n\nPlease choose a language below to translate it:",
+        "📩 Text received.\n\nPlease choose an option below:",
         reply_markup=language_keyboard(),
     )
