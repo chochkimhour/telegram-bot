@@ -314,6 +314,23 @@ async def send_voice(text: str, language: str = "en") -> BytesIO:
     return audio
 
 
+async def download_image(message) -> bytes:
+    media = message.photo[-1] if message.photo else message.document
+    for attempt in range(2):
+        try:
+            media_file = await media.get_file()
+            image_data = bytes(await media_file.download_as_bytearray())
+            if len(image_data) > MAX_IMAGE_BYTES:
+                raise ValueError("image is too large")
+            logger.info("Image downloaded: bytes=%d attempt=%d", len(image_data), attempt + 1)
+            return image_data
+        except Exception:
+            if attempt == 1:
+                raise
+            logger.warning("Image download failed; retrying once")
+    raise RuntimeError("image download failed")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
@@ -334,32 +351,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=language_keyboard(),
         )
     try:
-        if update.message.photo:
-            for attempt in range(2):
-                try:
-                    photo_file = await update.message.photo[-1].get_file()
-                    image_data = bytes(await photo_file.download_as_bytearray())
-                    if len(image_data) > MAX_IMAGE_BYTES:
-                        raise ValueError("image is too large")
-                    break
-                except Exception:
-                    if attempt == 1:
-                        raise
-                    logger.warning("Image download timed out; retrying")
-        elif update.message.document and (update.message.document.mime_type or "").startswith("image/"):
-            for attempt in range(2):
-                try:
-                    image_file = await update.message.document.get_file()
-                    image_data = bytes(await image_file.download_as_bytearray())
-                    if len(image_data) > MAX_IMAGE_BYTES:
-                        raise ValueError("image is too large")
-                    break
-                except Exception:
-                    if attempt == 1:
-                        raise
-                    logger.warning("Image file download timed out; retrying")
+        if image_received:
+            image_data = await asyncio.wait_for(
+                download_image(update.message),
+                timeout=25,
+            )
+    except asyncio.TimeoutError:
+        logger.error("Image download timed out after 25 seconds")
+        await delete_pending(update.effective_chat.id)
+        await update.message.reply_text(
+            "⏱️ Image processing took too long and was removed. Please send a smaller image.",
+            reply_markup=language_keyboard(),
+        )
+        return
     except Exception:
         logger.exception("Could not download image")
+        await delete_pending(update.effective_chat.id)
         await update.message.reply_text(
             "⚠️ I could not read that image. Please send a smaller image or try again.",
             reply_markup=language_keyboard(),

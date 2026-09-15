@@ -18,10 +18,18 @@ if os.getenv("VERCEL") and not os.getenv("WEBHOOK_SECRET"):
     raise RuntimeError("WEBHOOK_SECRET environment variable is required on Vercel")
 PORT = int(os.getenv("PORT", "9999"))
 PUBLIC_URL = os.getenv("WEBHOOK_URL")
-if not PUBLIC_URL and os.getenv("VERCEL_URL"):
-    PUBLIC_URL = f"https://{os.getenv('VERCEL_URL')}"
-if not PUBLIC_URL and os.getenv("VERCEL_PROJECT_PRODUCTION_URL"):
-    PUBLIC_URL = f"https://{os.getenv('VERCEL_PROJECT_PRODUCTION_URL')}"
+if not PUBLIC_URL:
+    vercel_domain = (
+        os.getenv("VERCEL_PROJECT_PRODUCTION_URL")
+        or os.getenv("VERCEL_URL")
+        or os.getenv("VERCEL_BRANCH_URL")
+    )
+    if vercel_domain:
+        PUBLIC_URL = (
+            vercel_domain
+            if vercel_domain.startswith("http")
+            else f"https://{vercel_domain}"
+        )
 
 logging.basicConfig(format="[%(levelname)s] %(asctime)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,7 +96,8 @@ def build_application() -> Application:
 
 
 telegram_app = build_application()
-WEBHOOK_PREFIX = "/api" if os.getenv("VERCEL") else ""
+IS_VERCEL = bool(os.getenv("VERCEL") or PUBLIC_URL)
+WEBHOOK_PREFIX = "/api" if IS_VERCEL else ""
 WEBHOOK_PATH = f"{WEBHOOK_PREFIX}/webhook/{WEBHOOK_SECRET}"
 web = FastAPI()
 
@@ -134,9 +143,28 @@ async def shutdown() -> None:
 
 async def process_webhook(request: Request) -> Response:
     if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
+        logger.warning("Rejected webhook request: invalid secret")
         return Response(content="forbidden", status_code=403)
-    update = Update.de_json(await request.json(), telegram_app.bot)
-    await telegram_app.process_update(update)
+    try:
+        payload = await request.json()
+        update = Update.de_json(payload, telegram_app.bot)
+        update_type = "unknown"
+        if update.message:
+            update_type = "message"
+        elif update.callback_query:
+            update_type = "callback_query"
+        logger.info(
+            "Webhook update received: type=%s update_id=%s",
+            update_type,
+            update.update_id,
+        )
+        await asyncio.wait_for(telegram_app.process_update(update), timeout=55)
+        logger.info("Webhook update completed: update_id=%s", update.update_id)
+    except asyncio.TimeoutError:
+        logger.error("Webhook update timed out after 55 seconds")
+    except Exception:
+        logger.exception("Webhook update processing failed")
+    # Always acknowledge Telegram so it does not retry the same stuck update.
     return Response(content="ok")
 
 
