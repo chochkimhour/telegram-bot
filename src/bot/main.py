@@ -136,7 +136,10 @@ async def startup() -> None:
 
 @web.on_event("shutdown")
 async def shutdown() -> None:
-    await telegram_app.bot.delete_webhook()
+    # Vercel recycles serverless instances frequently. Never delete the
+    # production webhook during a normal serverless shutdown.
+    if not IS_VERCEL:
+        await telegram_app.bot.delete_webhook()
     await telegram_app.stop()
     await telegram_app.shutdown()
 
