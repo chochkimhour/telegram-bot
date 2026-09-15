@@ -46,6 +46,28 @@ def clean_text(value: str) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
+def split_voice_text(value: str, limit: int = 900) -> list[str]:
+    paragraphs = [part.strip() for part in value.split("\n") if part.strip()]
+    chunks = []
+    current = ""
+    for paragraph in paragraphs:
+        if len(paragraph) <= limit and len(current) + len(paragraph) + 1 <= limit:
+            current = f"{current}\n{paragraph}".strip()
+            continue
+        if current:
+            chunks.append(current)
+            current = ""
+        while len(paragraph) > limit:
+            cut = paragraph.rfind(" ", 0, limit)
+            cut = cut if cut > 0 else limit
+            chunks.append(paragraph[:cut].strip())
+            paragraph = paragraph[cut:].strip()
+        current = paragraph
+    if current:
+        chunks.append(current)
+    return chunks or [value[:limit]]
+
+
 def extract_document_text(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
     if name.endswith(".txt") or name.endswith(".csv") or name.endswith(".tsv"):
@@ -590,11 +612,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             language = "km" if any("\u1780" <= char <= "\u17ff" for char in pending_text) else "en"
         try:
             await update.message.chat.send_action(ChatAction.UPLOAD_VOICE)
-            audio = await asyncio.wait_for(send_voice(pending_text, language), timeout=45)
-            await update.message.reply_audio(
-                audio=audio,
-                reply_markup=language_keyboard(),
+            voice_chunks = split_voice_text(pending_text)
+            logger.info(
+                "Voice generation split into chunks: chunks=%d characters=%d",
+                len(voice_chunks),
+                len(pending_text),
             )
+            for chunk in voice_chunks:
+                audio = await asyncio.wait_for(send_voice(chunk, language), timeout=45)
+                await update.message.reply_audio(audio=audio, reply_markup=language_keyboard())
         except asyncio.TimeoutError:
             logger.warning(
                 "Voice generation timed out: language=%s characters=%d",
