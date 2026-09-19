@@ -43,8 +43,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "⚠️ Something went wrong while processing that message. "
-                "Please try sending it again.",
+                "មានបញ្ហាក្នុងការដំណើរការសារ។ "
+                "សូមព្យាយាមផ្ញើម្តងទៀត។",
             )
         except Exception:
             logger.exception("Could not send error response")
@@ -53,21 +53,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 async def configure_bot_profile(application: Application) -> None:
     await application.bot.set_my_commands(
         [
-            BotCommand("start", "Start the translator"),
-            BotCommand("help", "Show instructions"),
-            BotCommand("reset", "Clear stuck pending data"),
-            BotCommand("status", "Check pending request"),
+            BotCommand("start", "ចាប់ផ្តើមកម្មវិធីបកប្រែ"),
+            BotCommand("help", "បង្ហាញការណែនាំ"),
+            BotCommand("reset", "លុបទិន្នន័យដែលកំពុងរង់ចាំ"),
+            BotCommand("status", "ពិនិត្យសំណើដែលកំពុងរង់ចាំ"),
         ]
     )
     await application.bot.set_my_short_description(
-        "Translate text, read images, and create English or Khmer voice messages."
+        "បកប្រែអត្ថបទ អានរូបភាព និងបង្កើតសារសំឡេងជាភាសាអង់គ្លេស ឬខ្មែរ។"
     )
     await application.bot.set_my_description(
-        "📖 Send or forward text in any language and choose EN + KM.\n\n"
-        "📝 Send an image or document and choose Extract Text.\n\n"
-        "🔊 Send or paste text and choose Text to Voice.\n\n"
-        "🎙️ Select Voice to Text before sending a voice message.\n\n"
-        "Use /status to check the bot and /reset to remove a stuck request."
+        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាភាសាណាមួយ ហើយជ្រើសរើស អង់គ្លេស + ខ្មែរ។\n\n"
+        "សូមផ្ញើរូបភាព ឬឯកសារ ហើយជ្រើសរើស ទាញយកអត្ថបទ។\n\n"
+        "សូមផ្ញើ ឬបញ្ចូលអត្ថបទ ហើយជ្រើសរើស អត្ថបទទៅជាសំឡេង។\n\n"
+        "សូមជ្រើសរើស សំឡេងទៅជាអត្ថបទ មុនពេលផ្ញើសារសំឡេង។\n\n"
+        "ប្រើ /status ដើម្បីពិនិត្យបូត និង /reset ដើម្បីលុបសំណើដែលជាប់គាំង។"
     )
     logger.info("Bot profile configured")
 

@@ -20,14 +20,14 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
-ENGLISH = "🇬🇧 English"
-KHMER = "🇰🇭 Khmer"
-BOTH = "🌐 EN + KM"
-TEXT_ONLY = "📝 Extract Text"
-VOICE = "🔊 Text to Voice"
-VOICE_TO_TEXT = "🎙️ Voice to Text"
-IMAGE_SOURCE = "🖼 Image text"
-MESSAGE_SOURCE = "💬 Message text"
+ENGLISH = "English"
+KHMER = "Khmer"
+BOTH = "អង់គ្លេស + ខ្មែរ"
+TEXT_ONLY = "ទាញយកអត្ថបទ"
+VOICE = "អត្ថបទទៅជាសំឡេង"
+VOICE_TO_TEXT = "សំឡេងទៅជាអត្ថបទ"
+IMAGE_SOURCE = "អត្ថបទពីរូបភាព"
+MESSAGE_SOURCE = "អត្ថបទក្នុងសារ"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
@@ -235,43 +235,43 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
             logger.info("Image text extracted: characters=%d", len(extracted))
             return extracted
         if target == "en":
-            return f"🇬🇧 English\n\n{await translate_to('en')}"
+            return f"English\n\n{await translate_to('en')}"
         if target == "km":
-            return f"🇰🇭 Khmer\n\n{await translate_to('km')}"
+            return f"Khmer\n\n{await translate_to('km')}"
         english, khmer = await asyncio.gather(
             translate_to("en"),
             translate_to("km"),
         )
         return (
-            f"🇬🇧 English\n\n{english}\n\n"
-            f"🇰🇭 Khmer\n\n{khmer}"
+            f"English\n\n{english}\n\n"
+            f"Khmer\n\n{khmer}"
         )
     except Exception:
         logger.exception("Translation request failed")
-        return "Sorry, I could not translate that right now. Please try again."
+        return "សូមអភ័យទោស ខ្ញុំមិនអាចបកប្រែបានទេ។ សូមព្យាយាមម្តងទៀត។"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👋 Welcome to Translate!\n\n"
-        "Send or forward text, or upload an image, then choose an option:\n\n"
-        "🌐 EN + KM — translate into both languages\n"
-        "📝 Extract Text — read clean text from an image or document\n"
-        "🔊 Text to Voice — turn text into audio\n"
-        "🎙️ Voice to Text — convert speech into copyable text\n\n"
-        "Choose a button below to get started.",
+        "សូមស្វាគមន៍មកកាន់កម្មវិធីបកប្រែ។\n\n"
+        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬបង្ហោះរូបភាព រួចជ្រើសរើសជម្រើសមួយ៖\n\n"
+        "អង់គ្លេស + ខ្មែរ — បកប្រែជាភាសាទាំងពីរ\n"
+        "ទាញយកអត្ថបទ — អានអត្ថបទពីរូបភាព ឬឯកសារ\n"
+        "អត្ថបទទៅជាសំឡេង — បម្លែងអត្ថបទទៅជាសំឡេង\n"
+        "សំឡេងទៅជាអត្ថបទ — បម្លែងសំឡេងទៅជាអត្ថបទ\n\n"
+        "សូមជ្រើសរើសប៊ូតុងខាងក្រោម ដើម្បីចាប់ផ្តើម។",
         reply_markup=language_keyboard(),
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Send or forward text or an image, then choose a button below.\n\n"
-        "Commands:\n"
-        "/start - Start the translator\n"
-        "/help - Show these instructions\n"
-        "/reset - Clear stuck pending data\n"
-        "/status - Check pending request",
+        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬរូបភាព រួចជ្រើសរើសប៊ូតុងខាងក្រោម។\n\n"
+        "ពាក្យបញ្ជា៖\n"
+        "/start - ចាប់ផ្តើមកម្មវិធីបកប្រែ\n"
+        "/help - បង្ហាញការណែនាំ\n"
+        "/reset - លុបទិន្នន័យដែលកំពុងរង់ចាំ\n"
+        "/status - ពិនិត្យសំណើដែលកំពុងរង់ចាំ",
         reply_markup=language_keyboard(),
     )
 
@@ -315,15 +315,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             logger.warning("Redis status check skipped: %s", error)
     if has_pending:
         await update.message.reply_text(
-            "✅ Bot is online and working.\n\n"
+            "បូតកំពុងដំណើរការ។\n\n"
                 "⏳ You have a pending request. Choose a button below to continue.\n\n"
             "Use /reset if it is stuck.",
             reply_markup=language_keyboard(),
         )
         return
     await update.message.reply_text(
-        "✅ Bot is online and working.\n\n"
-        "✅ No pending request. Send or forward text or an image to begin.",
+        "បូតកំពុងដំណើរការ។\n\n"
+        "មិនមានសំណើកំពុងរង់ចាំទេ។ សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬរូបភាព ដើម្បីចាប់ផ្តើម។",
         reply_markup=language_keyboard(),
     )
 
@@ -469,24 +469,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     document_received = bool(update.message.document and not image_received)
     if image_received:
+        media_group_id = update.message.media_group_id
+        acknowledgement_key = f"image_ack:{media_group_id}" if media_group_id else "image_ack:single"
         logger.info(
             "Image update received: photo=%s document=%s caption_characters=%d",
             bool(update.message.photo),
             bool(update.message.document),
             len(text),
         )
-        try:
-            # Acknowledge immediately, but do not stop image processing if this
-            # Telegram response temporarily fails.
-            await asyncio.wait_for(
-                update.message.reply_text(
-                    "📷 Image received. Preparing it now…\n\nChoose a button when processing is ready.",
-                    reply_markup=language_keyboard(),
-                ),
-                timeout=10,
-            )
-        except Exception:
-            logger.exception("Could not send image acknowledgement; continuing")
+        # Telegram sends each photo in an album as a separate update. Acknowledge
+        # the album once instead of sending the same prompt for every photo.
+        if not context.user_data.get(acknowledgement_key):
+            context.user_data[acknowledgement_key] = True
+            try:
+                # Acknowledge immediately, but do not stop image processing if this
+                # Telegram response temporarily fails.
+                acknowledgement = (
+                    "បានទទួលរូបភាពហើយ។ កំពុងរៀបចំ…\n\n"
+                    "Choose a button when processing is ready."
+                    if media_group_id
+                    else "បានទទួលរូបភាពហើយ។ កំពុងរៀបចំ…\n\n"
+                    "Choose a button when processing is ready."
+                )
+                await asyncio.wait_for(
+                    update.message.reply_text(
+                        acknowledgement,
+                        reply_markup=language_keyboard(),
+                    ),
+                    timeout=10,
+                )
+            except Exception:
+                logger.exception("Could not send image acknowledgement; continuing")
     try:
         if image_received:
             image_data = await asyncio.wait_for(
@@ -497,7 +510,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.error("Image download timed out after 25 seconds")
         await delete_pending(update.effective_chat.id)
         await update.message.reply_text(
-            "⏱️ Image processing took too long and was removed. Please send a smaller image.",
+            "ការដំណើរការរូបភាពចំណាយពេលយូរពេក ហើយត្រូវបានលុបចោល។ សូមផ្ញើរូបភាពតូចជាងនេះ។",
             reply_markup=language_keyboard(),
         )
         return
@@ -505,7 +518,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.exception("Could not download image")
         await delete_pending(update.effective_chat.id)
         await update.message.reply_text(
-            "⚠️ I could not read that image. Please send a smaller image or try again.",
+            "ខ្ញុំមិនអាចអានរូបភាពនេះបានទេ។ សូមផ្ញើរូបភាពតូចជាងនេះ ឬព្យាយាមម្តងទៀត។",
             reply_markup=language_keyboard(),
         )
         return
@@ -532,7 +545,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             if not extracted_text:
                 await update.message.reply_text(
-                    "⚠️ I could not find readable text in that file.",
+            "ខ្ញុំមិនអាចរកឃើញអត្ថបទដែលអាចអានបានក្នុងឯកសារនេះទេ។",
                     reply_markup=language_keyboard(),
                 )
                 return
@@ -545,28 +558,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except asyncio.TimeoutError:
             logger.error("Document processing timed out: filename=%s", filename or "(unnamed)")
             await update.message.reply_text(
-                "⏱️ That file took too long to read and was removed. Please send a smaller file.",
+                "ឯកសារនេះចំណាយពេលអានយូរពេក ហើយត្រូវបានលុបចោល។ សូមផ្ញើឯកសារតូចជាងនេះ។",
                 reply_markup=language_keyboard(),
             )
             return
         except ValueError as error:
             logger.warning("Document rejected: filename=%s reason=%s", filename or "(unnamed)", error)
             await update.message.reply_text(
-                "⚠️ This file is too large or unsupported. Send TXT, PDF, DOCX, XLSX, or XLSM files up to 10 MB.",
+                "ឯកសារនេះធំពេក ឬមិនគាំទ្រ។ សូមផ្ញើ TXT, PDF, DOCX, XLSX ឬ XLSM ដែលមានទំហំរហូតដល់ ១០ MB។",
                 reply_markup=language_keyboard(),
             )
             return
         except Exception:
             logger.exception("Could not read document: filename=%s", filename or "(unnamed)")
             await update.message.reply_text(
-                "⚠️ I could not read that file. Please send a TXT, PDF, DOCX, XLSX, or XLSM file.",
+                "ខ្ញុំមិនអាចអានឯកសារនេះបានទេ។ សូមផ្ញើឯកសារ TXT, PDF, DOCX, XLSX ឬ XLSM។",
                 reply_markup=language_keyboard(),
             )
             return
     if update.message.voice or update.message.audio:
         if context.user_data.get("mode") != "voice_to_text":
             await update.message.reply_text(
-                "🎙️ Select Voice to Text first, then send a voice message or audio file.",
+                "សូមជ្រើសរើស សំឡេងទៅជាអត្ថបទ ជាមុនសិន រួចផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
                 reply_markup=language_keyboard(),
             )
             return
@@ -588,26 +601,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 timeout=45,
             )
             await update.message.reply_text(
-                result or "⚠️ No speech was detected.",
+                result or "មិនរកឃើញសំឡេងនិយាយទេ។",
                 reply_markup=language_keyboard(),
             )
         except asyncio.TimeoutError:
             logger.warning("Voice transcription timed out")
             await update.message.reply_text(
-                "⏱️ Voice transcription took too long. Please send a shorter recording.",
+                "ការបម្លែងសំឡេងចំណាយពេលយូរពេក។ សូមផ្ញើសំឡេងខ្លីជាងនេះ។",
                 reply_markup=language_keyboard(),
             )
         except Exception:
             logger.exception("Voice transcription failed")
             await update.message.reply_text(
-                "⚠️ I could not convert that voice message to text. Please try again.",
+                "ខ្ញុំមិនអាចបម្លែងសារសំឡេងនេះទៅជាអត្ថបទបានទេ។ សូមព្យាយាមម្តងទៀត។",
                 reply_markup=language_keyboard(),
             )
         return
     if text == VOICE_TO_TEXT:
         context.user_data["mode"] = "voice_to_text"
         await update.message.reply_text(
-            "🎙️ Voice to Text selected.\n\nNow send a voice message or audio file.",
+            "បានជ្រើសរើស សំឡេងទៅជាអត្ថបទ។\n\nឥឡូវនេះ សូមផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
             reply_markup=language_keyboard(),
         )
         return
@@ -623,7 +636,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await delete_pending(update.effective_chat.id)
         if not pending_text:
             await update.message.reply_text(
-                "🔊 Send or forward text first, then press Voice.",
+                "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាមុន រួចចុច សំឡេង។",
                 reply_markup=language_keyboard(),
             )
             return
@@ -650,13 +663,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 len(pending_text),
             )
             await update.message.reply_text(
-                "⏱️ Voice generation took too long and was stopped. Please try shorter text.",
+                "ការបង្កើតសំឡេងចំណាយពេលយូរពេក ហើយត្រូវបានបញ្ឈប់។ សូមសាកល្បងអត្ថបទខ្លីជាងនេះ។",
                 reply_markup=language_keyboard(),
             )
         except Exception:
             logger.exception("Voice generation failed")
             await update.message.reply_text(
-                "⚠️ I could not create the voice message. Please try again with shorter text.",
+                "ខ្ញុំមិនអាចបង្កើតសារសំឡេងបានទេ។ សូមព្យាយាមម្តងទៀតជាមួយអត្ថបទខ្លីជាងនេះ។",
                 reply_markup=language_keyboard(),
             )
         return
@@ -678,7 +691,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if pending_text or pending_image:
             if target == "text" and not pending_image and not pending_text:
                 await update.message.reply_text(
-                    "📝 Please send or forward an image or document first.",
+                    "សូមផ្ញើ ឬបញ្ជូនបន្តរូបភាព ឬឯកសារជាមុនសិន។",
                     reply_markup=language_keyboard(),
                 )
                 return
@@ -697,7 +710,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await delete_pending(update.effective_chat.id)
                 logger.warning("Translation timed out and was removed: target=%s", target)
                 await update.message.reply_text(
-                    "⏱️ This request took too long and was removed. Please try again with a smaller image or shorter text.",
+                    "សំណើនេះចំណាយពេលយូរពេក ហើយត្រូវបានលុបចោល។ សូមព្យាយាមម្តងទៀតជាមួយរូបភាពតូចជាងនេះ ឬអត្ថបទខ្លីជាងនេះ។",
                     reply_markup=language_keyboard(),
                 )
                 return
@@ -711,7 +724,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await delete_pending(update.effective_chat.id)
                 logger.exception("Translation failed and pending data was removed")
                 await update.message.reply_text(
-                    "⚠️ I could not process that request, so it was removed. Please try again with a smaller image or shorter text.",
+                    "ខ្ញុំមិនអាចដំណើរការសំណើនេះបានទេ ដូច្នេះវាត្រូវបានលុបចោល។ សូមព្យាយាមម្តងទៀតជាមួយរូបភាពតូចជាងនេះ ឬអត្ថបទខ្លីជាងនេះ។",
                     reply_markup=language_keyboard(),
                 )
                 return
@@ -721,14 +734,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(result, reply_markup=language_keyboard())
             return
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nSend or forward text or an image, then choose a button below.",
+            f"បានជ្រើសរើស {text}។\n\nសូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬរូបភាព រួចជ្រើសរើសប៊ូតុងខាងក្រោម។",
             reply_markup=language_keyboard(),
         )
         return
     if text in (IMAGE_SOURCE, MESSAGE_SOURCE):
         context.user_data["pending_source"] = "image" if text == IMAGE_SOURCE else "message"
         await update.message.reply_text(
-            f"✅ {text} selected.\n\nNow choose EN + KM:",
+            f"បានជ្រើសរើស {text}។\n\nសូមជ្រើសរើសជម្រើសបកប្រែខាងក្រោម៖",
             reply_markup=language_keyboard(),
         )
         return
@@ -750,7 +763,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     if combined_text and combined_image:
         await update.message.reply_text(
-            "📦 This message contains an image and separate text.\n\nWhat should I process?",
+            "សារនេះមានរូបភាព និងអត្ថបទដាច់ដោយឡែក។\n\nតើអ្នកចង់ឱ្យខ្ញុំដំណើរការអ្វី?",
             reply_markup=source_keyboard(),
         )
         return
@@ -759,6 +772,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Keep the keyboard visible without sending a duplicate "Text received" prompt.
         return
     await update.message.reply_text(
-        "📩 Text received.\n\nPlease choose an option below:",
+        "បានទទួលអត្ថបទហើយ។\n\nសូមជ្រើសរើសជម្រើសខាងក្រោម៖",
         reply_markup=language_keyboard(),
     )
