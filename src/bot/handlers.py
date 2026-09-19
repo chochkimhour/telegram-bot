@@ -348,7 +348,7 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         except Exception as error:
             logger.warning("Redis clear skipped: %s", error)
     await update.message.reply_text(
-        "🧹 Pending text and image data cleared.",
+        "អត្ថបទ និងទិន្នន័យរូបភាពដែលកំពុងរង់ចាំ ត្រូវបានលុបចោល។",
         reply_markup=language_keyboard(),
     )
 
@@ -369,8 +369,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if has_pending:
         await update.message.reply_text(
             "ប្រព័ន្ធកំពុងដំណើរការ។\n\n"
-                "⏳ You have a pending request. Choose a button below to continue.\n\n"
-            "Use /reset if it is stuck.",
+                "អ្នកមានសំណើដែលកំពុងរង់ចាំ។ សូមជ្រើសរើសប៊ូតុងខាងក្រោម ដើម្បីបន្ត។\n\n"
+            "ប្រើ /reset ប្រសិនបើសំណើជាប់គាំង។",
             reply_markup=language_keyboard(),
         )
         return
@@ -540,10 +540,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 # Telegram response temporarily fails.
                 acknowledgement = (
                     "បានទទួលរូបភាពហើយ។ កំពុងរៀបចំ…\n\n"
-                    "Choose a button when processing is ready."
+                    "សូមជ្រើសរើសប៊ូតុង នៅពេលការរៀបចំរួចរាល់។"
                     if media_group_id
                     else "បានទទួលរូបភាពហើយ។ កំពុងរៀបចំ…\n\n"
-                    "Choose a button when processing is ready."
+                    "សូមជ្រើសរើសប៊ូតុង នៅពេលការរៀបចំរួចរាល់។"
                 )
                 await asyncio.wait_for(
                     update.message.reply_text(
