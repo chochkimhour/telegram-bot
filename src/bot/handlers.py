@@ -290,7 +290,8 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                 "generationConfig": {"temperature": 0.1},
             }
             headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-            async with httpx.AsyncClient(timeout=30) as client:
+            # Keep all three retry attempts within the handler's 60-second limit.
+            async with httpx.AsyncClient(timeout=18) as client:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                 for attempt in range(3):
                     try:
@@ -315,6 +316,16 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                             raise
                         delay = 2 ** attempt
                         logger.warning("Gemini returned %s; retrying in %ss", status, delay)
+                        await asyncio.sleep(delay)
+                    except (httpx.TimeoutException, httpx.NetworkError) as error:
+                        if attempt == 2:
+                            raise
+                        delay = 2 ** attempt
+                        logger.warning(
+                            "Gemini request failed with %s; retrying in %ss",
+                            type(error).__name__,
+                            delay,
+                        )
                         await asyncio.sleep(delay)
 
         if target == "text":
