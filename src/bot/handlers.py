@@ -336,17 +336,17 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
             logger.info("Image text extracted: characters=%d", len(extracted))
             return extracted
         if target == "en":
-            return f"English\n\n{await translate_to('en')}"
+            return f"អង់គ្លេស\n\n{await translate_to('en')}"
         if target == "km":
-            return f"Khmer\n\n{await translate_to('km')}"
+            return f"ខ្មែរ\n\n{await translate_to('km')}"
         english, khmer = await asyncio.gather(
             translate_to("en"),
             translate_to("km"),
         )
         return (
-            f"English\n\n{english}\n\n"
+            f"អង់គ្លេស\n\n{english}\n\n"
             "────────────────────\n\n"
-            f"Khmer\n\n{khmer}"
+            f"ខ្មែរ\n\n{khmer}"
         )
     except Exception:
         logger.exception("Translation request failed")

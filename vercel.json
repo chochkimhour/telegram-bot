@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/webhook/:path*",
-      "destination": "/api"
+      "destination": "/api/index.py"
     }
   ]
 }
