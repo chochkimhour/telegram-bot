@@ -33,6 +33,9 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
 active_tasks: dict[int, asyncio.Task] = {}
+request_history: dict[int, list[float]] = {}
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX_REQUESTS = 20
 
 
 def clean_text(value: str) -> str:
@@ -78,10 +81,11 @@ def extract_document_text(filename: str, data: bytes) -> str:
     raise ValueError("unsupported document type")
 
 
-async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> None:
+async def save_pending(chat_id: int, text: str, image_data: bytes | list[bytes] | None) -> None:
     if not redis_client:
         return
-    data = {"text": text, "image": base64.b64encode(image_data).decode() if image_data else None}
+    images = image_data if isinstance(image_data, list) else ([image_data] if image_data else [])
+    data = {"text": text, "images": [base64.b64encode(image).decode() for image in images]}
     try:
         await asyncio.wait_for(
             redis_client.set(f"pending:{chat_id}", json.dumps(data), ex=600), timeout=5
@@ -95,7 +99,7 @@ async def save_pending(chat_id: int, text: str, image_data: bytes | None) -> Non
         logger.warning("Redis save skipped: %s", error)
 
 
-async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
+async def load_pending(chat_id: int) -> tuple[str, bytes | list[bytes] | None]:
     if not redis_client:
         return "", None
     try:
@@ -109,7 +113,11 @@ async def load_pending(chat_id: int) -> tuple[str, bytes | None]:
         return "", None
     data = json.loads(raw)
     pending_text = data.get("text", "")
-    pending_image = base64.b64decode(data["image"]) if data.get("image") else None
+    encoded_images = data.get("images")
+    if encoded_images is None and data.get("image"):
+        encoded_images = [data["image"]]
+    decoded_images = [base64.b64decode(image) for image in (encoded_images or [])]
+    pending_image = decoded_images if len(decoded_images) > 1 else (decoded_images[0] if decoded_images else None)
     logger.info(
         "Redis pending data loaded: image=%s characters=%d",
         bool(pending_image),
@@ -151,8 +159,19 @@ async def record_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await asyncio.wait_for(redis_client.hincrby(key, "documents", 1), timeout=5)
             if message and (message.voice or message.audio):
                 await asyncio.wait_for(redis_client.hincrby(key, "voice", 1), timeout=5)
+            await asyncio.wait_for(redis_client.expire(key, 30 * 24 * 60 * 60), timeout=5)
         except Exception as error:
             logger.warning("Activity tracking skipped: %s", error)
+
+
+def rate_limit_exceeded(user_id: int) -> bool:
+    now = time.monotonic()
+    recent = [timestamp for timestamp in request_history.get(user_id, []) if now - timestamp < RATE_LIMIT_WINDOW]
+    exceeded = len(recent) >= RATE_LIMIT_MAX_REQUESTS
+    if not exceeded:
+        recent.append(now)
+    request_history[user_id] = recent
+    return exceeded
 
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -208,13 +227,13 @@ async def reply_in_chunks(message, text: str, reply_markup=None) -> None:
         )
 
 
-async def translate_text(text: str, target: str = "both", image_data: bytes | None = None) -> str:
+async def translate_text(text: str, target: str = "both", image_data: bytes | list[bytes] | None = None) -> str:
     try:
         logger.info(
             "Translation requested: target=%s caption_characters=%d image_bytes=%d",
             target,
             len(text),
-            len(image_data) if image_data else 0,
+            sum(len(image) for image in image_data) if isinstance(image_data, list) else (len(image_data) if image_data else 0),
         )
 
         async def translate_to(language: str) -> str:
@@ -246,8 +265,9 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
                 + f"\n\nCaption or message text:\n{text or '(none; read the image)'}"
             )
             parts = [{"text": prompt}]
-            if image_data:
-                parts.append({"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image_data).decode("ascii")}})
+            images = image_data if isinstance(image_data, list) else ([image_data] if image_data else [])
+            for image in images:
+                parts.append({"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image).decode("ascii")}})
             payload = {
                 "systemInstruction": {
                     "parts": [{
@@ -308,6 +328,7 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
         )
         return (
             f"English\n\n{english}\n\n"
+            "────────────────────\n\n"
             f"Khmer\n\n{khmer}"
         )
     except Exception:
@@ -563,6 +584,13 @@ async def download_image(message) -> bytes:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
+        return
+    user = update.effective_user
+    if user and rate_limit_exceeded(user.id):
+        await update.message.reply_text(
+            "អ្នកបានផ្ញើសំណើច្រើនពេកក្នុងរយៈពេលខ្លី។ សូមរង់ចាំបន្តិច រួចព្យាយាមម្តងទៀត។",
+            reply_markup=language_keyboard(),
+        )
         return
     await record_activity(update, context)
     text = clean_text(update.message.text or update.message.caption or "")
@@ -869,7 +897,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     old_image = context.user_data.get("pending_image")
     had_pending = bool(old_text or old_image)
     combined_text = "\n".join(part for part in (old_text, text.strip()) if part)
-    combined_image = image_data or old_image
+    if image_data and update.message.media_group_id:
+        previous_images = old_image if isinstance(old_image, list) else ([old_image] if old_image else [])
+        combined_image = previous_images + [image_data]
+    else:
+        combined_image = image_data or old_image
     context.user_data["pending_text"] = combined_text
     context.user_data["pending_image"] = combined_image
     await save_pending(update.effective_chat.id, combined_text, combined_image)

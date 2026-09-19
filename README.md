@@ -19,9 +19,11 @@ A simple Telegram bot that translates text and reads text from images using Goog
 - Send a voice message or audio file to receive clean transcribed text.
 - Send TXT, PDF, DOCX, XLSX, or XLSM files to extract their text for translation or voice.
 - Supports image captions and images sent as photos or files.
-- Images are acknowledged immediately. Photo albums receive one acknowledgement instead of one message per image.
+- Images are acknowledged immediately. Photo albums receive one acknowledgement and are processed together in upload order.
 - Uses Redis temporarily for pending text/images; data expires after 10 minutes or after processing.
 - Tracks lightweight per-user activity for the `/profile` command when Redis is available.
+- Limits each user to 20 requests per minute to protect the bot and external services.
+- Activity records expire after 30 days.
 - Uses local polling or a FastAPI webhook on Vercel.
 
 ## Requirements
@@ -101,6 +103,8 @@ Never expose Telegram, Gemini, Redis, or webhook secrets. Rotate any secret that
 ## GitHub Actions checks
 
 The workflow in `.github/workflows/ci-cd.yml` installs the project and compiles the Python code on every pull request and push. Vercel deploys automatically when the GitHub repository is connected to a Vercel project.
+
+Run the local test suite with `python -m unittest discover -s tests -v`.
 
 The bot uses Gemini 3.6 Flash to automatically detect the source language, read images/documents/audio, and translate into English and Khmer. See the [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash).
 
