@@ -7,6 +7,7 @@ import json
 import time
 import subprocess
 import tempfile
+import wave
 from io import BytesIO
 
 import httpx
@@ -400,24 +401,65 @@ async def send_voice(text: str, language: str = "en") -> BytesIO:
         len(text),
     )
     audio = BytesIO()
-    audio.name = "translation.mp3"
-    speech_language = "km" if language == "km" else "en"
+    if language == "km":
+        # Gemini's official TTS language list does not include Khmer. Use the
+        # Khmer-supported provider directly so Khmer is never synthesized with
+        # the wrong language voice.
+        audio.name = "translation.mp3"
+        try:
+            await asyncio.to_thread(gTTS(text=text, lang="km", slow=False).write_to_fp, audio)
+        except Exception:
+            logger.exception("Khmer voice generation failed: characters=%d", len(text))
+            raise
+        audio.seek(0)
+        logger.info("Khmer voice generated successfully: bytes=%d", audio.getbuffer().nbytes)
+        return audio
+    audio.name = "translation.wav"
+    api_key = os.getenv("GEMINI_API_KEY")
+    tts_model = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
     try:
-        await asyncio.to_thread(
-            gTTS(text=text, lang=speech_language, slow=False).write_to_fp,
-            audio,
-        )
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{tts_model}:generateContent"
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": "Kore"}}},
+            },
+        }
+        async with httpx.AsyncClient(timeout=45) as client:
+            response = await client.post(
+                url,
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=payload,
+            )
+            response.raise_for_status()
+            parts = response.json()["candidates"][0]["content"]["parts"]
+            audio_part = next(part for part in parts if part.get("inlineData"))
+            pcm_data = base64.b64decode(audio_part["inlineData"]["data"])
+        with wave.open(audio, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(24000)
+            wav_file.writeframes(pcm_data)
     except Exception:
         logger.exception(
-            "Voice provider request failed: language=%s characters=%d",
-            speech_language,
+            "Gemini TTS request failed: model=%s characters=%d",
+            tts_model,
             len(text),
         )
-        raise
+        # Preserve Khmer voice support if the configured Gemini TTS model is
+        # unavailable or does not support the requested account configuration.
+        if language != "km":
+            raise
+        audio = BytesIO()
+        audio.name = "translation.mp3"
+        await asyncio.to_thread(gTTS(text=text, lang="km", slow=False).write_to_fp, audio)
     audio.seek(0)
     logger.info(
-        "Voice generated successfully: language=%s bytes=%d duration_ms=%d",
-        speech_language,
+        "Voice generated successfully: model=%s bytes=%d duration_ms=%d",
+        tts_model,
         audio.getbuffer().nbytes,
         int((time.perf_counter() - started) * 1000),
     )
@@ -706,9 +748,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=language_keyboard(),
             )
             return
-        language = context.user_data.get("target", "en")
-        if language not in ("en", "km"):
-            language = "km" if any("\u1780" <= char <= "\u17ff" for char in pending_text) else "en"
+        # Text-to-voice should follow the text's script, not a previous
+        # translation choice stored in the user's session.
+        khmer_characters = sum("\u1780" <= char <= "\u17ff" for char in pending_text)
+        # Gemini TTS automatically detects all of its supported languages.
+        # Only Khmer needs a local route because Gemini TTS does not list Khmer.
+        language = "km" if khmer_characters else "auto"
+        logger.info(
+            "Voice language routing selected: route=%s khmer_characters=%d",
+            language,
+            khmer_characters,
+        )
         try:
             await update.message.chat.send_action(ChatAction.UPLOAD_VOICE)
             logger.info(

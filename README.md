@@ -77,6 +77,7 @@ Images are limited to 10 MB. Failed downloads receive a friendly error message a
    - `WEBHOOK_SECRET` = a long random secret used in the webhook path
    - `GEMINI_API_KEY` = your Google Gemini API key
    - `GEMINI_MODEL` = `gemini-3.6-flash`
+   - `GEMINI_TTS_MODEL` = `gemini-2.5-flash-preview-tts`
    - `REDIS_URL` = your Redis connection URL for pending images/text
 
 4. Deploy the project. Vercel automatically detects `api/index.py` as a Python Function and provides the public URL used for the Telegram webhook.
