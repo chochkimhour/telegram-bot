@@ -249,7 +249,9 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                     "Keep headings, paragraphs, lists, dates, numbers, and meaningful line breaks in their visual order. "
                     "Do not guess unclear characters; omit unreadable fragments rather than inventing text. "
                     "Copy personal names, place names, organization names, phone numbers, IDs, email addresses, URLs, "
-                    "dates, and amounts exactly as visible. Do not normalize, translate, or transliterate proper names. "
+                    "dates, years, and amounts exactly as visible. Preserve every digit exactly; never replace, "
+                    "correct, infer, normalize, reorder, or convert a number or date. Preserve names and place "
+                    "names exactly as visible; do not autocorrect, invent, translate, normalize, or transliterate them. "
                     "Do not translate, summarize, label, or explain. Ignore QR codes, logos, stamps, signatures, "
                     "decorative marks, watermarks, and isolated page numbers. Return plain text only."
                     if language == "text"
@@ -258,8 +260,10 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                     "for columns, finish the left column before the next column. "
                     "Preserve meaning, names, numbers, emojis, paragraph order, and useful line breaks. "
                     "Keep personal names, place names, organization names, IDs, phone numbers, email addresses, URLs, "
-                    "dates, and amounts exactly as provided when they are readable. Do not translate or transliterate "
-                    "proper names unless the source explicitly provides a standard translated name. "
+                    "dates, years, and amounts exactly as provided when they are readable. Preserve every digit "
+                    "exactly and never correct or infer numbers. Preserve personal names, place names, and "
+                    "organization names exactly as provided; do not autocorrect, invent, translate, or transliterate "
+                    "them unless the source explicitly provides a standard translated name. "
                     "Do not invent missing or unreadable content. Return only the translation."
                 )
                 + f"\n\nCaption or message text:\n{text or '(none; read the image)'}"
@@ -274,8 +278,10 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                         "text": (
                             "You are a precise document OCR and translation assistant. "
                             "Use only visible source content. Never hallucinate missing words. "
-                            "Treat names and other proper nouns as protected text: preserve their spelling exactly "
-                            "whenever readable. "
+                            "Treat personal names, place names, organization names, numbers, dates, years, IDs, "
+                            "and other proper nouns as protected text: "
+                            "preserve every visible character exactly whenever readable. Never correct or infer "
+                            "a digit. "
                             "Return only the requested plain text or translation, without commentary."
                         )
                     }]
