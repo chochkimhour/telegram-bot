@@ -196,6 +196,17 @@ def source_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+async def reply_in_chunks(message, text: str, reply_markup=None) -> None:
+    """Send long text safely within Telegram's message-size limit."""
+    max_length = 3900
+    chunks = [text[i : i + max_length] for i in range(0, len(text), max_length)] or [""]
+    for index, chunk in enumerate(chunks):
+        await message.reply_text(
+            chunk,
+            reply_markup=reply_markup if index == len(chunks) - 1 else None,
+        )
+
+
 async def translate_text(text: str, target: str = "both", image_data: bytes | None = None) -> str:
     try:
         logger.info(
@@ -654,7 +665,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 transcribe_audio(audio_data, mime_type),
                 timeout=45,
             )
-            await update.message.reply_text(
+            await reply_in_chunks(
+                update.message,
                 result or "មិនរកឃើញសំឡេងនិយាយទេ។",
                 reply_markup=language_keyboard(),
             )
@@ -785,7 +797,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             finally:
                 if active_tasks.get(chat_id) is translation_task:
                     active_tasks.pop(chat_id, None)
-            await update.message.reply_text(result, reply_markup=language_keyboard())
+            await reply_in_chunks(
+                update.message,
+                result,
+                reply_markup=language_keyboard(),
+            )
             return
         await update.message.reply_text(
             f"បានជ្រើសរើស {text}។\n\nសូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬរូបភាព រួចជ្រើសរើសប៊ូតុងខាងក្រោម។",
