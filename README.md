@@ -13,14 +13,15 @@ A simple Telegram bot that translates text and reads text from images using Goog
 ## What it does
 
 - Send or forward text in any language.
-- Choose `EN + KM` to receive English and Khmer together.
-- Send or paste text and choose `Text to Voice` to receive spoken audio.
-- Send or forward an image and choose `Extract Text` to get clean OCR text.
+- Choose `អង់គ្លេស និង ខ្មែរ` to receive English and Khmer together.
+- Send or paste text and choose `អត្ថបទទៅជាសំឡេង` to receive spoken audio.
+- Send or forward an image and choose `ទាញយកអត្ថបទ` to get clean OCR text.
 - Send a voice message or audio file to receive clean transcribed text.
 - Send TXT, PDF, DOCX, XLSX, or XLSM files to extract their text for translation or voice.
 - Supports image captions and images sent as photos or files.
-- Images are acknowledged immediately, and slow requests are removed after 60 seconds with a user message.
+- Images are acknowledged immediately. Photo albums receive one acknowledgement instead of one message per image.
 - Uses Redis temporarily for pending text/images; data expires after 10 minutes or after processing.
+- Tracks lightweight per-user activity for the `/profile` command when Redis is available.
 - Uses local polling or a FastAPI webhook on Vercel.
 
 ## Requirements
@@ -54,13 +55,13 @@ The default local port is `9999`.
 After `/start`, the menu has four buttons in a 2×2 layout:
 
 ```text
-🌐 EN + KM           📝 Extract Text
-🔊 Text to Voice     🎙️ Voice to Text
+អង់គ្លេស និង ខ្មែរ       ទាញយកអត្ថបទ
+អត្ថបទទៅជាសំឡេង         សំឡេងទៅជាអត្ថបទ
 ```
 
-For image OCR, send or forward the image first, then press `📝 Extract Text`. The bot returns plain extracted text without headings or explanations.
+For image OCR, send or forward the image first, then press `ទាញយកអត្ថបទ`. The bot returns plain extracted text without headings or explanations.
 
-For text-to-voice, send or paste text, then press `🔊 Text to Voice`. Khmer text is spoken in Khmer; other text is spoken in English. Keep the text reasonably short for faster audio generation.
+For text-to-voice, send or paste text, then press `អត្ថបទទៅជាសំឡេង`. Khmer text is spoken in Khmer; other text is spoken in English. Keep the text reasonably short for faster audio generation.
 
 For voice-to-text, send a Telegram voice message or audio file. The bot returns clean, copyable transcription text.
 
@@ -88,6 +89,7 @@ The webhook endpoint uses `/api/webhook/<WEBHOOK_SECRET>` and validates Telegram
 - `/help` — show instructions
 - `/reset` — remove pending text, image, and source-selection data if a request is stuck
 - `/status` — check that the bot is online and whether a request is pending
+- `/profile` — show your Telegram name and activity summary
 
 Telegram suggests these commands when you type /. Use `/reset` if an image or translation appears stuck.
 

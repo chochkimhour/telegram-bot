@@ -22,12 +22,12 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 ENGLISH = "English"
 KHMER = "Khmer"
-BOTH = "អង់គ្លេស + ខ្មែរ"
+BOTH = "អង់គ្លេស និង ខ្មែរ"
 TEXT_ONLY = "ទាញយកអត្ថបទ"
 VOICE = "អត្ថបទទៅជាសំឡេង"
 VOICE_TO_TEXT = "សំឡេងទៅជាអត្ថបទ"
 IMAGE_SOURCE = "អត្ថបទពីរូបភាព"
-MESSAGE_SOURCE = "អត្ថបទក្នុងសារ"
+MESSAGE_SOURCE = "អត្ថបទពីសារ"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 redis_client = redis.from_url(os.getenv("REDIS_URL")) if os.getenv("REDIS_URL") else None
@@ -124,6 +124,58 @@ async def delete_pending(chat_id: int) -> None:
         await asyncio.wait_for(redis_client.delete(f"pending:{chat_id}"), timeout=5)
     except Exception as error:
         logger.warning("Redis cleanup skipped: %s", error)
+
+
+async def record_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Record lightweight per-user usage statistics for /profile."""
+    user = update.effective_user
+    if not user:
+        return
+    message = update.effective_message
+    stats = context.user_data.setdefault("activity", {"messages": 0, "images": 0, "documents": 0, "voice": 0})
+    stats["messages"] += 1
+    if message and message.photo:
+        stats["images"] += 1
+    if message and message.document:
+        stats["documents"] += 1
+    if message and (message.voice or message.audio):
+        stats["voice"] += 1
+    if redis_client:
+        try:
+            key = f"activity:{user.id}"
+            await asyncio.wait_for(redis_client.hincrby(key, "messages", 1), timeout=5)
+            if message and message.photo:
+                await asyncio.wait_for(redis_client.hincrby(key, "images", 1), timeout=5)
+            if message and message.document:
+                await asyncio.wait_for(redis_client.hincrby(key, "documents", 1), timeout=5)
+            if message and (message.voice or message.audio):
+                await asyncio.wait_for(redis_client.hincrby(key, "voice", 1), timeout=5)
+        except Exception as error:
+            logger.warning("Activity tracking skipped: %s", error)
+
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not user or not update.message:
+        return
+    display_name = user.full_name or user.username or "អ្នកប្រើប្រាស់"
+    stats = context.user_data.get("activity", {})
+    if redis_client:
+        try:
+            stored = await asyncio.wait_for(redis_client.hgetall(f"activity:{user.id}"), timeout=5)
+            if stored:
+                stats = {key.decode() if isinstance(key, bytes) else key: int(value) for key, value in stored.items()}
+        except Exception as error:
+            logger.warning("Profile activity lookup skipped: %s", error)
+    await update.message.reply_text(
+        "ប្រវត្តិរូបអ្នកប្រើប្រាស់\n\n"
+        f"ឈ្មោះ៖ {display_name}\n"
+        f"ចំនួនសារ៖ {stats.get('messages', 0)}\n"
+        f"រូបភាព៖ {stats.get('images', 0)}\n"
+        f"ឯកសារ៖ {stats.get('documents', 0)}\n"
+        f"សារសំឡេង៖ {stats.get('voice', 0)}",
+        reply_markup=language_keyboard(),
+    )
 
 
 def language_keyboard() -> ReplyKeyboardMarkup:
@@ -254,11 +306,11 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | No
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "សូមស្វាគមន៍មកកាន់កម្មវិធីបកប្រែ។\n\n"
-        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬបង្ហោះរូបភាព រួចជ្រើសរើសជម្រើសមួយ៖\n\n"
-        "អង់គ្លេស + ខ្មែរ — បកប្រែជាភាសាទាំងពីរ\n"
-        "ទាញយកអត្ថបទ — អានអត្ថបទពីរូបភាព ឬឯកសារ\n"
-        "អត្ថបទទៅជាសំឡេង — បម្លែងអត្ថបទទៅជាសំឡេង\n"
-        "សំឡេងទៅជាអត្ថបទ — បម្លែងសំឡេងទៅជាអត្ថបទ\n\n"
+        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬបញ្ចូលរូបភាព រួចជ្រើសរើសជម្រើសមួយ៖\n\n"
+        "«អង់គ្លេស និង ខ្មែរ» — បកប្រែជាភាសាទាំងពីរ\n"
+        "«ទាញយកអត្ថបទ» — អានអត្ថបទពីរូបភាព ឬឯកសារ\n"
+        "«អត្ថបទទៅជាសំឡេង» — បម្លែងអត្ថបទទៅជាសំឡេង\n"
+        "«សំឡេងទៅជាអត្ថបទ» — បម្លែងសំឡេងទៅជាអត្ថបទ\n\n"
         "សូមជ្រើសរើសប៊ូតុងខាងក្រោម ដើម្បីចាប់ផ្តើម។",
         reply_markup=language_keyboard(),
     )
@@ -271,7 +323,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/start - ចាប់ផ្តើមកម្មវិធីបកប្រែ\n"
         "/help - បង្ហាញការណែនាំ\n"
         "/reset - លុបទិន្នន័យដែលកំពុងរង់ចាំ\n"
-        "/status - ពិនិត្យសំណើដែលកំពុងរង់ចាំ",
+        "/status - ពិនិត្យសំណើដែលកំពុងរង់ចាំ\n"
+        "/profile - បង្ហាញឈ្មោះ និងសកម្មភាពរបស់អ្នក",
         reply_markup=language_keyboard(),
     )
 
@@ -315,14 +368,14 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             logger.warning("Redis status check skipped: %s", error)
     if has_pending:
         await update.message.reply_text(
-            "បូតកំពុងដំណើរការ។\n\n"
+            "ប្រព័ន្ធកំពុងដំណើរការ។\n\n"
                 "⏳ You have a pending request. Choose a button below to continue.\n\n"
             "Use /reset if it is stuck.",
             reply_markup=language_keyboard(),
         )
         return
     await update.message.reply_text(
-        "បូតកំពុងដំណើរការ។\n\n"
+        "ប្រព័ន្ធកំពុងដំណើរការ។\n\n"
         "មិនមានសំណើកំពុងរង់ចាំទេ។ សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទ ឬរូបភាព ដើម្បីចាប់ផ្តើម។",
         reply_markup=language_keyboard(),
     )
@@ -458,6 +511,7 @@ async def download_image(message) -> bytes:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
+    await record_activity(update, context)
     text = clean_text(update.message.text or update.message.caption or "")
     image_data = None
     image_received = bool(
@@ -579,7 +633,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.voice or update.message.audio:
         if context.user_data.get("mode") != "voice_to_text":
             await update.message.reply_text(
-                "សូមជ្រើសរើស សំឡេងទៅជាអត្ថបទ ជាមុនសិន រួចផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
+            "សូមជ្រើសរើស «សំឡេងទៅជាអត្ថបទ» ជាមុនសិន រួចផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
                 reply_markup=language_keyboard(),
             )
             return
@@ -620,7 +674,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if text == VOICE_TO_TEXT:
         context.user_data["mode"] = "voice_to_text"
         await update.message.reply_text(
-            "បានជ្រើសរើស សំឡេងទៅជាអត្ថបទ។\n\nឥឡូវនេះ សូមផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
+            "បានជ្រើសរើស «សំឡេងទៅជាអត្ថបទ»។\n\nឥឡូវនេះ សូមផ្ញើសារសំឡេង ឬឯកសារសំឡេង។",
             reply_markup=language_keyboard(),
         )
         return
@@ -636,7 +690,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await delete_pending(update.effective_chat.id)
         if not pending_text:
             await update.message.reply_text(
-                "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាមុន រួចចុច សំឡេង។",
+                "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាមុន រួចចុច «អត្ថបទទៅជាសំឡេង»។",
                 reply_markup=language_keyboard(),
             )
             return

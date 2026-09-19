@@ -9,7 +9,14 @@ from telegram import BotCommand, Update
 from telegram.error import RetryAfter
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-from src.bot.handlers import clear_command, handle_message, help_command, start, status_command
+from src.bot.handlers import (
+    clear_command,
+    handle_message,
+    help_command,
+    profile_command,
+    start,
+    status_command,
+)
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -57,17 +64,18 @@ async def configure_bot_profile(application: Application) -> None:
             BotCommand("help", "បង្ហាញការណែនាំ"),
             BotCommand("reset", "លុបទិន្នន័យដែលកំពុងរង់ចាំ"),
             BotCommand("status", "ពិនិត្យសំណើដែលកំពុងរង់ចាំ"),
+            BotCommand("profile", "បង្ហាញប្រវត្តិរូប និងសកម្មភាព"),
         ]
     )
     await application.bot.set_my_short_description(
-        "បកប្រែអត្ថបទ អានរូបភាព និងបង្កើតសារសំឡេងជាភាសាអង់គ្លេស ឬខ្មែរ។"
+        "បកប្រែអត្ថបទ អានរូបភាព និងបង្កើតសំឡេងជាភាសាអង់គ្លេស ឬខ្មែរ។"
     )
     await application.bot.set_my_description(
-        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាភាសាណាមួយ ហើយជ្រើសរើស អង់គ្លេស + ខ្មែរ។\n\n"
-        "សូមផ្ញើរូបភាព ឬឯកសារ ហើយជ្រើសរើស ទាញយកអត្ថបទ។\n\n"
-        "សូមផ្ញើ ឬបញ្ចូលអត្ថបទ ហើយជ្រើសរើស អត្ថបទទៅជាសំឡេង។\n\n"
-        "សូមជ្រើសរើស សំឡេងទៅជាអត្ថបទ មុនពេលផ្ញើសារសំឡេង។\n\n"
-        "ប្រើ /status ដើម្បីពិនិត្យបូត និង /reset ដើម្បីលុបសំណើដែលជាប់គាំង។"
+        "សូមផ្ញើ ឬបញ្ជូនបន្តអត្ថបទជាភាសាណាមួយ ហើយជ្រើសរើស «អង់គ្លេស និង ខ្មែរ»។\n\n"
+        "សូមផ្ញើរូបភាព ឬឯកសារ ហើយជ្រើសរើស «ទាញយកអត្ថបទ»។\n\n"
+        "សូមផ្ញើ ឬបញ្ចូលអត្ថបទ រួចជ្រើសរើស «អត្ថបទទៅជាសំឡេង»។\n\n"
+        "សូមជ្រើសរើស «សំឡេងទៅជាអត្ថបទ» មុនពេលផ្ញើសារសំឡេង។\n\n"
+        "ប្រើ /status ដើម្បីពិនិត្យស្ថានភាព, /reset ដើម្បីលុបសំណើដែលជាប់គាំង និង /profile ដើម្បីមើលសកម្មភាពរបស់អ្នក។"
     )
     logger.info("Bot profile configured")
 
@@ -90,6 +98,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("reset", clear_command))
     application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("profile", profile_command))
     message_filters = (
         filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL
     ) & ~filters.COMMAND
