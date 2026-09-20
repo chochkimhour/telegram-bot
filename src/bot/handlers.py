@@ -52,6 +52,32 @@ def clean_text(value: str) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
+def is_image_document(document) -> bool:
+    """Recognize images sent as Telegram documents, including missing MIME types."""
+    if not document:
+        return False
+    mime_type = (document.mime_type or "").lower()
+    if mime_type.startswith("image/"):
+        return True
+    filename = (document.file_name or "").lower()
+    return filename.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"))
+
+
+def image_mime_type(image: bytes) -> str:
+    """Infer a supported image MIME type from its file signature."""
+    if image.startswith(b"\x89PNG"):
+        return "image/png"
+    if image.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if image.startswith(b"RIFF") and image[8:12] == b"WEBP":
+        return "image/webp"
+    if image.startswith(b"BM"):
+        return "image/bmp"
+    if image.startswith(b"II*\x00") or image.startswith(b"MM\x00*"):
+        return "image/tiff"
+    return "image/jpeg"
+
+
 def extract_document_text(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
     if name.endswith(".txt") or name.endswith(".csv") or name.endswith(".tsv"):
@@ -271,7 +297,7 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
             parts = [{"text": prompt}]
             images = image_data if isinstance(image_data, list) else ([image_data] if image_data else [])
             for image in images:
-                parts.append({"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image).decode("ascii")}})
+                parts.append({"inline_data": {"mime_type": image_mime_type(image), "data": base64.b64encode(image).decode("ascii")}})
             payload = {
                 "systemInstruction": {
                     "parts": [{
@@ -616,7 +642,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         update.message.photo
         or (
             update.message.document
-            and (update.message.document.mime_type or "").startswith("image/")
+            and is_image_document(update.message.document)
         )
     )
     document_received = bool(update.message.document and not image_received)
