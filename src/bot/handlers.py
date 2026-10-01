@@ -281,7 +281,9 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                     "Do not translate, summarize, label, or explain. Ignore QR codes, logos, stamps, signatures, "
                     "decorative marks, watermarks, and isolated page numbers. Return plain text only."
                     if language == "text"
-                    else f"Translate the following text into {language}. Detect the source language automatically. "
+                    else f"Translate the following text into {'English' if language == 'en' else 'Khmer (Cambodian)'}; "
+                    "for Khmer, use Khmer script (Unicode U+1780–U+17FF), never Thai. "
+                    "Detect the source language automatically. "
                     "If an image is included, first read visible text from top to bottom and left to right; "
                     "for columns, finish the left column before the next column. "
                     "Preserve meaning, names, numbers, emojis, paragraph order, and useful line breaks. "
@@ -308,7 +310,8 @@ async def translate_text(text: str, target: str = "both", image_data: bytes | li
                             "and other proper nouns as protected text: "
                             "preserve every visible character exactly whenever readable. Never correct or infer "
                             "a digit. "
-                            "Return only the requested plain text or translation, without commentary."
+                            "Return only the requested plain text or translation, without commentary. "
+                            "When Khmer is requested, output Khmer (Cambodian) in Khmer script, never Thai."
                         )
                     }]
                 },
